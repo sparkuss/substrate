@@ -3864,6 +3864,7 @@ dependencies = [
  "pallet-contracts-primitives",
  "pallet-contracts-rpc-runtime-api",
  "pallet-democracy",
+ "pallet-dotmog",
  "pallet-elections-phragmen",
  "pallet-finality-tracker",
  "pallet-grandpa",
@@ -4421,6 +4422,20 @@ dependencies = [
  "sp-std",
  "sp-storage",
  "substrate-test-utils",
+]
+
+[[package]]
+name = "pallet-dotmog"
+version = "2.0.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "rand_chacha 0.2.2",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

@@ -76,6 +76,9 @@ pub use frame_system::Call as SystemCall;
 #[cfg(any(feature = "std", test))]
 pub use pallet_staking::StakerStatus;
 
+/// Import the DOT Mog pallet.
+pub use pallet_dotmog;
+
 /// Implementations of some helper traits passed into runtime modules as associated types.
 pub mod impls;
 use impls::{CurrencyToVoteHandler, Author};
@@ -887,6 +890,11 @@ impl pallet_vesting::Trait for Runtime {
 	type WeightInfo = weights::pallet_vesting::WeightInfo;
 }
 
+/// Configure the pallet dotmog in pallets/dotmog.
+impl pallet_dotmog::Trait for Runtime {
+	type Event = Event;
+}
+
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -925,6 +933,8 @@ construct_runtime!(
 		Scheduler: pallet_scheduler::{Module, Call, Storage, Event<T>},
 		Proxy: pallet_proxy::{Module, Call, Storage, Event<T>},
 		Multisig: pallet_multisig::{Module, Call, Storage, Event<T>},
+        // Include the custom logic from the dotmog pallet in the runtime.
+		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>},
 	}
 );
 

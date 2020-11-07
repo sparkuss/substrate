@@ -893,6 +893,8 @@ impl pallet_vesting::Trait for Runtime {
 /// Configure the pallet dotmog in pallets/dotmog.
 impl pallet_dotmog::Trait for Runtime {
 	type Event = Event;
+	type Currency = Balances;
+	type Randomness = RandomnessCollectiveFlip;
 }
 
 construct_runtime!(

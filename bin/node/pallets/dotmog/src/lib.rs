@@ -20,10 +20,10 @@ const MAX_AUCTIONS_PER_BLOCK: usize = 2;
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
-pub struct MogwaiStruct<Hash, Balance> {
+pub struct MogwaiStruct<Hash, BlockNumber, Balance> {
 	id: Hash,
 	dna: Hash,
-//	genesis: Hash,
+	genesis: BlockNumber,
 	price: Balance,
 	gen: u64,
 }
@@ -62,7 +62,7 @@ decl_storage! {
 		Something get(fn something): Option<u32>;
 
 		/// A map of mogwais accessible by the mogwai hash.
-		Mogwais get(fn mogwai): map hasher(identity) T::Hash => MogwaiStruct<T::Hash, BalanceOf<T>>;
+		Mogwais get(fn mogwai): map hasher(identity) T::Hash => MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>;
 		/// A map of mogwai owners accessible by the mogwai hash.
 		MogwaiOwner get(fn owner_of): map hasher(identity) T::Hash => Option<T::AccountId>;
 				
@@ -230,7 +230,7 @@ decl_module! {
 			
 			//let data_hash = T::Hashing::hash(random_bytes.as_bytes());
 
-			//let block_number = <frame_system::Module<T>>::block_number();
+			let block_number = <frame_system::Module<T>>::block_number();
 			//let block_hash = <frame_system::Module<T>>::block_hash(block_number);
 			
 			let random_hash = Self::generate_random_hash(b"create_mogwai", sender.clone());
@@ -238,7 +238,7 @@ decl_module! {
 			let new_mogwai = MogwaiStruct {
 							id: random_hash,
 							dna: random_hash,
-//							genesis: random_hash,
+							genesis: block_number,
 							price: Zero::zero(),
 							gen: 0,
 			};
@@ -326,10 +326,13 @@ decl_module! {
 				}
 			}
 
+			let block_number = <frame_system::Module<T>>::block_number();
+			//let block_hash = <frame_system::Module<T>>::block_hash(block_number);
+
 			let new_mogwai = MogwaiStruct {
                 id: random_hash,
 				dna: final_dna,
-//				genesis: final_dna,
+				genesis: block_number,
                 price: Zero::zero(),
 				gen: next_gen,
             };
@@ -484,7 +487,7 @@ impl<T: Trait> Module<T> {
 		nonce.encode()
 	}
 
-	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, BalanceOf<T>>) -> dispatch::DispatchResult {
+	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>) -> dispatch::DispatchResult {
 
 		//ensure!(<MogwaiOwner<T>>::contains_key(&mogwai_id), "Mogwai already exists!");
 		ensure!(!MogwaiOwner::<T>::contains_key(&mogwai_id), Error::<T>::MogwaiAlreadyExists);

@@ -6,7 +6,7 @@
 
 use frame_support::{decl_module, decl_storage, decl_event, decl_error, ensure, codec::{Encode, Decode}, dispatch, traits::{Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement::AllowDeath}};
 use frame_system::{ensure_signed};
-use sp_runtime::{traits::{Hash, TrailingZeroInput, Zero}};
+use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
 use sp_std::vec::Vec;
 use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
 
@@ -39,7 +39,28 @@ pub struct Auction<Hash, Balance, BlockNumber, AccountId> {
 	high_bidder: AccountId,
 }
 
+#[derive(Encode, Decode, Clone, PartialEq)]
+pub enum BreedType {
+	DomDom = 0,
+	DomRez = 1,
+	RezDom = 2,
+	RezRez = 3,
+}
+
+impl BreedType {
+    fn from_u32(value: u32) -> BreedType {
+        match value {
+            0 => BreedType::DomDom,
+            1 => BreedType::DomRez,
+			2 => BreedType::RezDom,
+			3 => BreedType::RezRez,
+            _ => panic!("Unknown value: {}", value),
+        }
+    }
+}
+
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as frame_system::Trait>::AccountId>>::Balance;
+
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Trait: frame_system::Trait {
@@ -156,6 +177,8 @@ decl_module! {
 	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
 		// Errors must be initialized if they are used by the pallet.
 		type Error = Error<T>;
+
+		//type BreedType = BreedType;
 
 		// Events must be initialized if they are used by the pallet.
 		fn deposit_event() = default;
@@ -319,14 +342,50 @@ decl_module! {
 
 			let random_hash = Self::generate_random_hash(b"breed_mogwai", sender.clone());
 
-			let mut final_dna = parents[0].dna;
-			for (i, (dna_2_element, r)) in parents[1].dna.as_ref().iter().zip(random_hash.as_ref().iter()).enumerate() {
-				if r % 2 == 0 {
-					final_dna.as_mut()[i] = *dna_2_element;
-				}
-			}
-
 			let block_number = <frame_system::Module<T>>::block_number();
+				
+			let breed_type : BreedType = BreedType::from_u32((block_number % 4.into()).saturated_into::<u32>());
+			
+			let mut final_dna = parents[0].dna.clone();                        
+
+			for i in 0..63 {
+				match breed_type {
+					BreedType::DomDom => 
+					if i < 32 { 
+						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
+					} else { 
+						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
+					},
+					BreedType::DomRez => 
+					if i < 32 { 
+						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
+					} else { 
+						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
+					},
+					BreedType::RezDom => 
+					if i < 32 { 
+						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
+					} else { 
+						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
+					},
+					BreedType::RezRez => 					
+					if i < 32 { 
+						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
+					} else { 
+						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
+					},
+					_ => final_dna.as_mut()[i] = parents[0].dna.as_ref()[i],
+				}			
+			 }
+
+
+			//let mut final_dna = parents[0].dna;
+			//for (i, (dna_2_element, r)) in parents[1].dna.as_ref().iter().zip(random_hash.as_ref().iter()).enumerate() {
+			//	if r % 2 == 0 {
+			//		final_dna.as_mut()[i] = *dna_2_element;
+			//	}
+			//}
+
 			//let block_hash = <frame_system::Module<T>>::block_hash(block_number);
 
 			let new_mogwai = MogwaiStruct {

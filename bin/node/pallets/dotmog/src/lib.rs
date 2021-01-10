@@ -7,7 +7,7 @@
 use frame_support::{decl_module, decl_storage, decl_event, decl_error, ensure, codec::{Encode, Decode}, dispatch, traits::{Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement::AllowDeath}};
 use frame_system::{ensure_signed};
 use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
-use sp_std::vec::Vec;
+use sp_std::vec::{Vec};
 use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
 
 #[cfg(test)]
@@ -82,6 +82,9 @@ decl_storage! {
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
 		Something get(fn something): Option<u32>;
 
+		/// A map of the current configuration of an account.
+		AccountConfig get(fn account_config): map hasher(blake2_128_concat) T::AccountId => Option<Vec<u8>>;
+
 		/// A map of mogwais accessible by the mogwai hash.
 		Mogwais get(fn mogwai): map hasher(identity) T::Hash => MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>;
 		/// A map of mogwai owners accessible by the mogwai hash.
@@ -133,8 +136,14 @@ decl_event!(
 		/// parameters. [something, who]
 		SomethingStored(u32, AccountId),
 
+		// A account configuration has been changed.
+		AccountConfigChanged(AccountId, Vec<u8>),
+
 		/// A mogwai has been created.
 		MogwaiCreated(AccountId, Hash),
+
+		/// A mogwai has been removed. (R.I.P.)
+		MogwaiRemoved(AccountId, Hash),
 
 		/// A price has been set for a mogwai.
 		PriceSet(AccountId, Hash, Balance),
@@ -167,6 +176,8 @@ decl_error! {
 		MogwaiAlreadyExists,
 		/// The mogwais hash doesn't exist.
 		MogwaiDoesntExists,
+		/// The submitted index is out of range.
+		ConfigIndexOutOfRange,
 	}
 }
 
@@ -220,6 +231,49 @@ decl_module! {
 			}
 		}
 
+		#[weight = 10_000 + T::DbWeight::get().writes(1)]
+		pub fn update_config(origin, index: u8, value_opt: Option<u8>) -> dispatch::DispatchResult {
+
+			let sender = ensure_signed(origin)?;
+
+			ensure!(index < 8, Error::<T>::ConfigIndexOutOfRange);
+
+			let config_opt = <AccountConfig<T>>::get(&sender);
+				
+			let mut config = Vec::new();
+			config.push(0); // config 1: MAX_AMOUNT_MOGWAIS
+			config.push(0); // config 2: ???
+			config.push(0); // config 3: ???
+			config.push(0); // config 4: ???
+			config.push(0); // config 5: ???
+			config.push(0); // config 6: ???
+			config.push(0); // config 7: ???
+			config.push(0); // config 8: ???
+			
+			if config_opt.is_some() {
+				config = config_opt.unwrap();
+			}
+
+			// TODO: add rules (min, max) for different configurations
+
+			if value_opt.is_some() {
+				config[usize::from(index)] = value_opt.unwrap();
+			} else {
+				let config_value = config[usize::from(index)].checked_add(1)
+					.ok_or("Overflow adding a one to index")?;
+				config[usize::from(index)] = config_value;
+			}
+
+			// updating to the new configuration
+			<AccountConfig<T>>::insert(&sender, &config);
+
+			// Emit an event.
+			Self::deposit_event(RawEvent::AccountConfigChanged(sender, config));
+			
+			// Return a successful DispatchResult
+			Ok(())
+		}
+
 		/// Set price of mogwai.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
         fn set_price(origin, mogwai_id: T::Hash, new_price: BalanceOf<T>) -> dispatch::DispatchResult {
@@ -271,6 +325,21 @@ decl_module! {
 			Ok(())
 		}
 		
+		/// Remove an old mogwai.
+		#[weight = 10_000 + T::DbWeight::get().writes(1)]
+		fn remove_mogwai(origin, mogwai_id: T::Hash) -> dispatch::DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+
+			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
+			
+			ensure!(owner == sender, "You don't own this mogwai");
+
+			Self::remove(sender, mogwai_id)?;
+
+            Ok(())
+		}
+
 		/// Transfer mogwai to a new account.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
 		fn transfer(origin, to: T::AccountId, mogwai_id: T::Hash) -> dispatch::DispatchResult {
@@ -439,6 +508,7 @@ decl_module! {
 		/// Bid on an auction.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
 		fn bid_auction(origin, mogwai_id: T::Hash, bid: BalanceOf<T>) -> dispatch::DispatchResult {
+
             let sender = ensure_signed(origin)?;
 
 			ensure!(Mogwais::<T>::contains_key(mogwai_id), Error::<T>::MogwaiDoesntExists);
@@ -573,6 +643,50 @@ impl<T: Trait> Module<T> {
 
 		// Emit an event.
 		Self::deposit_event(RawEvent::MogwaiCreated(to, mogwai_id));
+
+		Ok(())
+	}
+
+	fn remove(from: T::AccountId, mogwai_id: T::Hash) -> dispatch::DispatchResult {
+
+		ensure!(MogwaiOwner::<T>::contains_key(&mogwai_id), Error::<T>::MogwaiDoesntExists);
+
+		let owned_mogwais_count = Self::owned_mogwais_count(&from);
+		let new_owned_mogwai_count = owned_mogwais_count.checked_sub(1)
+			.ok_or("Overflow removing an old mogwai from account balance")?;
+
+		let all_mogwais_count = Self::all_mogwais_count();
+		let new_all_mogwais_count = all_mogwais_count.checked_sub(1)
+			.ok_or("Overflow removing an old mogwai to total supply")?;
+
+		// Update maps.
+		<Mogwais<T>>::remove(mogwai_id);
+		<MogwaiOwner<T>>::remove(mogwai_id);
+					
+        let all_mogwai_index = <AllMogwaisIndex<T>>::get(mogwai_id);
+        if all_mogwai_index != new_all_mogwais_count {
+            let all_last_mogwai_id = <AllMogwaisArray<T>>::get(new_all_mogwais_count);
+            <AllMogwaisArray<T>>::insert(all_mogwai_index, all_last_mogwai_id);
+            <AllMogwaisIndex<T>>::insert(all_last_mogwai_id, all_mogwai_index);
+		}
+
+		<AllMogwaisArray<T>>::remove(new_all_mogwais_count);
+		AllMogwaisCount::put(new_all_mogwais_count);
+		<AllMogwaisIndex<T>>::remove(mogwai_id);
+
+        let mogwai_index = <OwnedMogwaisIndex<T>>::get(mogwai_id);
+        if mogwai_index != new_owned_mogwai_count {
+            let last_mogwai_id = <OwnedMogwaisArray<T>>::get((from.clone(), new_owned_mogwai_count));
+            <OwnedMogwaisArray<T>>::insert((from.clone(), mogwai_index), last_mogwai_id);
+            <OwnedMogwaisIndex<T>>::insert(last_mogwai_id, mogwai_index);
+		}
+
+		<OwnedMogwaisArray<T>>::remove((from.clone(), new_owned_mogwai_count));
+		<OwnedMogwaisCount<T>>::insert(&from, new_owned_mogwai_count);
+		<OwnedMogwaisIndex<T>>::remove(mogwai_id);
+
+		// Emit an event.
+		Self::deposit_event(RawEvent::MogwaiRemoved(from, mogwai_id));
 
 		Ok(())
 	}

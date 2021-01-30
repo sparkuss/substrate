@@ -178,6 +178,8 @@ decl_error! {
 		MogwaiDoesntExists,
 		/// The submitted index is out of range.
 		ConfigIndexOutOfRange,
+		/// Incompatible generation
+		MogwaiIncompatibleGeneration,
 	}
 }
 
@@ -396,6 +398,71 @@ decl_module! {
 			Ok(())
 		}
 
+		/// Morph a gen 0 mogwai
+		#[weight = 10_000 + T::DbWeight::get().writes(1)]
+		fn morph_mogwai(origin, mogwai_id: T::Hash) -> dispatch::DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+
+            ensure!(Mogwais::<T>::contains_key(mogwai_id), Error::<T>::MogwaiDoesntExists);
+
+			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
+			
+			ensure!(owner == sender, "You don't own this mogwai");
+
+			let mut mogwai = Self::mogwai(mogwai_id);
+
+			ensure!(mogwai.gen == 0, Error::<T>::MogwaiIncompatibleGeneration);
+
+			let block_number = <frame_system::Module<T>>::block_number();
+
+			let breed_type : BreedType = Self::calculate_breedtype(block_number);
+
+			let gen = mogwai.dna.as_ref();
+                     
+			let mut final_dna : [u8;32] = [0;32];      
+			
+			let (ll, rr) = final_dna.split_at_mut(16);
+			let (l1, l2) = ll.split_at_mut(8);
+			let (r1, r2) = rr.split_at_mut(8);
+
+			match breed_type {
+				BreedType::DomDom => {
+					l1.copy_from_slice(&gen[..8]);
+					l2.copy_from_slice(&gen[8..16]);
+					r1.copy_from_slice(&gen[16..24]);
+					r2.copy_from_slice(&gen[24..32]);
+				}
+				,
+				BreedType::DomRez => {
+					l1.copy_from_slice(&gen[..8]);
+					l2.copy_from_slice(&gen[8..16]);
+					r1.copy_from_slice(&gen[24..32]);
+					r2.copy_from_slice(&gen[16..24]);
+				},
+				BreedType::RezDom => {
+					l1.copy_from_slice(&gen[8..16]);
+					l2.copy_from_slice(&gen[..8]);
+					r1.copy_from_slice(&gen[24..32]);
+					r2.copy_from_slice(&gen[16..24]);
+				},
+				BreedType::RezRez => {					
+					l1.copy_from_slice(&gen[8..16]);
+					l2.copy_from_slice(&gen[..8]);
+					r1.copy_from_slice(&gen[16..24]);
+					r2.copy_from_slice(&gen[24..32]);
+				},
+			}			
+
+			for i in 0..32 {
+				mogwai.dna.as_mut()[i] = final_dna[i];
+			}
+
+            <Mogwais<T>>::insert(mogwai_id, mogwai);
+
+			Ok(())
+		}
+
 		/// Breed a mogwai.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
 		fn breed_mogwai(origin, mogwai_id_1: T::Hash, mogwai_id_2: T::Hash) -> dispatch::DispatchResult {
@@ -405,7 +472,14 @@ decl_module! {
 			ensure!(Mogwais::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiDoesntExists);
 			ensure!(Mogwais::<T>::contains_key(mogwai_id_2), Error::<T>::MogwaiDoesntExists);
 
+			let owner = Self::owner_of(mogwai_id_1).ok_or("No owner for this mogwai")?;
+			
+			ensure!(owner == sender, "You don't own the first mogwai");
+
 			let parents = [Self::mogwai(mogwai_id_1) , Self::mogwai(mogwai_id_2)];
+
+			ensure!(parents[0].gen + parents[1].gen != 1, Error::<T>::MogwaiIncompatibleGeneration);
+
 
 			let next_gen = parents[0].gen + parents[1].gen + 1;
 
@@ -413,40 +487,75 @@ decl_module! {
 
 			let block_number = <frame_system::Module<T>>::block_number();
 				
-			let breed_type : BreedType = BreedType::from_u32((block_number % 4.into()).saturated_into::<u32>());
+			let breed_type : BreedType = Self::calculate_breedtype(block_number);
 			
-			let mut final_dna = parents[0].dna.clone();                        
+			let mut final_dna : [u8;32] = [0;32];      
+			
+			let (ll, rr) = final_dna.split_at_mut(16);
+			let (l1, l2) = ll.split_at_mut(8);
+			let (r1, r2) = rr.split_at_mut(8);
 
-			for i in 0..63 {
-				match breed_type {
-					BreedType::DomDom => 
-					if i < 32 { 
-						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
-					} else { 
-						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
-					},
-					BreedType::DomRez => 
-					if i < 32 { 
-						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
-					} else { 
-						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
-					},
-					BreedType::RezDom => 
-					if i < 32 { 
-						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
-					} else { 
-						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
-					},
-					BreedType::RezRez => 					
-					if i < 32 { 
-						final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
-					} else { 
-						final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
-					},
-					_ => final_dna.as_mut()[i] = parents[0].dna.as_ref()[i],
-				}			
-			 }
+			match breed_type {
+				BreedType::DomDom => {
+					l1.copy_from_slice(&parents[0].dna.as_ref()[..8]);
+					l2.copy_from_slice(&parents[0].dna.as_ref()[8..16]);
+					r1.copy_from_slice(&parents[1].dna.as_ref()[16..24]);
+					r2.copy_from_slice(&parents[1].dna.as_ref()[24..32]);
+				},
+				BreedType::DomRez => {
+					l1.copy_from_slice(&parents[0].dna.as_ref()[..8]);
+					l2.copy_from_slice(&parents[0].dna.as_ref()[8..16]);
+					r1.copy_from_slice(&parents[1].dna.as_ref()[..8]);
+					r2.copy_from_slice(&parents[1].dna.as_ref()[8..16]);
+				},
+				BreedType::RezDom => {
+					l1.copy_from_slice(&parents[0].dna.as_ref()[16..24]);
+					l2.copy_from_slice(&parents[0].dna.as_ref()[24..32]);
+					r1.copy_from_slice(&parents[1].dna.as_ref()[16..24]);
+					r2.copy_from_slice(&parents[1].dna.as_ref()[24..32]);
+				},
+				BreedType::RezRez => {					
+					l1.copy_from_slice(&parents[0].dna.as_ref()[16..24]);
+					l2.copy_from_slice(&parents[0].dna.as_ref()[24..32]);
+					r1.copy_from_slice(&parents[1].dna.as_ref()[..8]);
+					r2.copy_from_slice(&parents[1].dna.as_ref()[8..16]);
+				},
+			}
 
+			let mut final_dna_hash = random_hash.clone();
+			for i in 0..32 {
+				final_dna_hash.as_mut()[i] = final_dna[i];
+			}
+
+			//for i in 0..63 {
+			//	match breed_type {
+			//		BreedType::DomDom => 
+			//		if i < 32 { 
+			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
+			//		} else { 
+			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
+			//		},
+			//		BreedType::DomRez => 
+			//		if i < 32 { 
+			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
+			//		} else { 
+			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
+			//		},
+			//		BreedType::RezDom => 
+			//		if i < 32 { 
+			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
+			//		} else { 
+			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
+			//		},
+			//		BreedType::RezRez => 					
+			//		if i < 32 { 
+			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
+			//		} else { 
+			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
+			//		},
+			//		_ => final_dna.as_mut()[i] = parents[0].dna.as_ref()[i],
+			//	}			
+			//}
 
 			//let mut final_dna = parents[0].dna;
 			//for (i, (dna_2_element, r)) in parents[1].dna.as_ref().iter().zip(random_hash.as_ref().iter()).enumerate() {
@@ -459,7 +568,7 @@ decl_module! {
 
 			let new_mogwai = MogwaiStruct {
                 id: random_hash,
-				dna: final_dna,
+				dna: final_dna_hash,
 				genesis: block_number,
                 price: Zero::zero(),
 				gen: next_gen,
@@ -740,5 +849,21 @@ impl<T: Trait> Module<T> {
 			 .expect("input is padded with zeroes; qed");
 		return (seed, &sender, Self::encode_and_update_nonce()).using_encoded(T::Hashing::hash);
 	}
-}
 
+	fn calculate_breedtype(block_number: T::BlockNumber) -> BreedType {
+		// old breed type calculations changed on each block
+		//let breed_type = BreedType::from_u32((block_number % 4.into()).saturated_into::<u32>());
+		//return breed_type;
+
+		let modulo80 = (block_number % 80.into()).saturated_into::<u32>();
+		if modulo80 < 20 {
+			return BreedType::DomDom;
+		} else if modulo80 < 40 {
+			return BreedType::DomRez;
+		} else if modulo80 < 60 {
+			return BreedType::RezDom;
+		} else {
+			return BreedType::RezRez;
+		}
+	}
+}

@@ -1,11 +1,11 @@
 [package]
-authors = ["Mogwaicoin"]
+authors = ["DOT Mog Team"]
 edition = "2018"
 name = "pallet-dotmog"
 version = "2.0.0"
-license = "Unlicense"
-homepage = "https://www.mogwaicoin.org"
-repository = "https://github.com/substrate-developer-hub/substrate-dmog/"
+license = "AGPL3.0"
+homepage = "https://www.dotmog.com"
+repository = "https://github.com/dotmog/substrate/"
 description = "FRAME pallet dmog for defining custom runtime logic."
 readme = "README.md"
 

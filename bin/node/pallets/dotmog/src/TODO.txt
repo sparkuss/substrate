@@ -1,0 +1,4 @@
+- check if 33 recombination works foun 00
+- check if hybrids should also have bios
+- check if a live upgrade breaks the chain
+-

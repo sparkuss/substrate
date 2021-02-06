@@ -1,14 +1,22 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+// DOT Mog, Susbstrate Gamification Project with C# .NET Standard & Unity3D
+// Copyright (C) 2020-2021 DOT Mog Team, darkfriend77 & metastar77
+//
+// DOT Mog is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License.
+// DOT Mog is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
 
-/// Edit this file to define custom logic or remove it if it is not needed.
-/// Learn more about FRAME and the core library of Substrate FRAME pallets:
-/// https://substrate.dev/docs/en/knowledgebase/runtime/frame
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use frame_support::{decl_module, decl_storage, decl_event, decl_error, ensure, codec::{Encode, Decode}, dispatch, traits::{Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement::AllowDeath}};
 use frame_system::{ensure_signed};
 use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
 use sp_std::vec::{Vec};
-use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
+//use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
 
 #[cfg(test)]
 mod mock;
@@ -16,7 +24,18 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+/// Implementations of some helper traits passed into runtime modules as associated types.
+pub mod genetic;
+use genetic::{Breeding, BreedType};
+
+pub mod game_event;
+use game_event::{GameEventType};
+
+pub mod game_config;
+use game_config::{GameConfig};
+
 const MAX_AUCTIONS_PER_BLOCK: usize = 2;
+const MAX_EVENTS_PER_BLOCK: usize = 10;
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -30,6 +49,29 @@ pub struct MogwaiStruct<Hash, BlockNumber, Balance> {
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
+pub struct MogwaiBios<Hash, BlockNumber, Balance> {
+	mogwai_id: Hash,
+	state: u32,
+	metaxy: Vec<[u8;16]>,
+	intrinsic: Balance,
+	level: u8,
+	phases: Vec<BlockNumber>,
+	adaptations: Vec<Hash>
+}
+
+#[derive(Encode, Decode, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct GameEvent<Hash, BlockNumber, GameEventType> {
+	id: Hash,
+	begin: BlockNumber,
+	duration: u16,
+	event_type: GameEventType,
+	hashes: Vec<Hash>,
+	value: u64,
+}
+
+#[derive(Encode, Decode, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Debug))]
 pub struct Auction<Hash, Balance, BlockNumber, AccountId> {
 	mogwai_id: Hash,
 	mogwai_owner: AccountId,
@@ -39,28 +81,7 @@ pub struct Auction<Hash, Balance, BlockNumber, AccountId> {
 	high_bidder: AccountId,
 }
 
-#[derive(Encode, Decode, Clone, PartialEq)]
-pub enum BreedType {
-	DomDom = 0,
-	DomRez = 1,
-	RezDom = 2,
-	RezRez = 3,
-}
-
-impl BreedType {
-    fn from_u32(value: u32) -> BreedType {
-        match value {
-            0 => BreedType::DomDom,
-            1 => BreedType::DomRez,
-			2 => BreedType::RezDom,
-			3 => BreedType::RezRez,
-            _ => panic!("Unknown value: {}", value),
-        }
-    }
-}
-
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as frame_system::Trait>::AccountId>>::Balance;
-
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Trait: frame_system::Trait {
@@ -87,6 +108,8 @@ decl_storage! {
 
 		/// A map of mogwais accessible by the mogwai hash.
 		Mogwais get(fn mogwai): map hasher(identity) T::Hash => MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>;
+		/// A map of mogwai bios accessible by the mogwai hash.
+		MogwaisBios get(fn mogwai_bios): map hasher(identity) T::Hash => MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>>;
 		/// A map of mogwai owners accessible by the mogwai hash.
 		MogwaiOwner get(fn owner_of): map hasher(identity) T::Hash => Option<T::AccountId>;
 				
@@ -113,10 +136,29 @@ decl_storage! {
 		
 		/// A map of bids accessible by account id and mogwai hash.
 		Bids get(fn bid_of): map hasher(blake2_128_concat) (T::Hash, T::AccountId) => BalanceOf<T>;
-		
 		/// A vec of accounts accessible by mogwai hash.
 		BidAccounts get(fn bid_accounts): map hasher(blake2_128_concat) T::Hash => Vec<T::AccountId>;
-		
+
+		/// A map of game events accessible by the game event id (hash).
+		GameEvents get(fn game_events): map hasher(identity) T::Hash => GameEvent<T::Hash, T::BlockNumber, GameEventType>;
+
+		/// A map of all existing game events accessible by the index. 
+		AllGameEventsArray get(fn game_event_by_index): map hasher(blake2_128_concat) u64 => T::Hash;
+		/// A count over all existing game events in the system.
+		AllGameEventsCount get(fn all_game_events_count): u64;
+		/// A map of the index of the game events accessible by the game event id (hash).
+		AllGameEventsIndex: map hasher(identity) T::Hash => u64;
+
+		/// A map of all game event ids (hash) associated with an game event type (indexed).
+		GameEventsArray get(fn game_event_of_type_by_index): map hasher(blake2_128_concat) (GameEventType, u64) => T::Hash;
+		/// A count over all existing game events of one particular game event type.
+		GameEventsCount get(fn game_event_of_type_count): map hasher(blake2_128_concat) GameEventType => u64;
+		/// A map of the game event type index accessible by the game event id (hash).
+		GameEventsIndex: map hasher(identity) T::Hash => u64;
+
+		/// A vec of game event ids (hash) accessible by the triggering block number.
+		GameEventsAtBlock get(fn game_events_at_block): map hasher(blake2_128_concat) T::BlockNumber => Vec<T::Hash>;	
+
 		/// The nonce used for randomness.
 		Nonce: u64 = 0;
 	}
@@ -162,6 +204,12 @@ decl_event!(
 
 		/// A auction hash been finalized.
 		AuctionFinalized(Hash, Balance, BlockNumber),
+
+		/// A game event hash been created.
+		GameEventCreated(AccountId, Hash),
+
+		/// A game event hash been executed.
+		GameEventExecuted(Hash),
 	}
 );
 
@@ -172,7 +220,7 @@ decl_error! {
 		NoneValue,
 		/// A Storage overflow, has occured make sure to validate first.
 		StorageOverflow,
-		/// The mogwai hash already exists.
+		/// The mogwai id (hash) already exists.
 		MogwaiAlreadyExists,
 		/// The mogwais hash doesn't exist.
 		MogwaiDoesntExists,
@@ -180,6 +228,10 @@ decl_error! {
 		ConfigIndexOutOfRange,
 		/// Incompatible generation
 		MogwaiIncompatibleGeneration,
+		// Mogwai doesn't have a bios code.
+		MogwaiHasNoBios,
+		/// The game event id (hash) already exists.
+		GameEventAlreadyExists,
 	}
 }
 
@@ -241,36 +293,27 @@ decl_module! {
 			ensure!(index < 8, Error::<T>::ConfigIndexOutOfRange);
 
 			let config_opt = <AccountConfig<T>>::get(&sender);
-				
-			let mut config = Vec::new();
-			config.push(0); // config 1: MAX_AMOUNT_MOGWAIS
-			config.push(0); // config 2: ???
-			config.push(0); // config 3: ???
-			config.push(0); // config 4: ???
-			config.push(0); // config 5: ???
-			config.push(0); // config 6: ???
-			config.push(0); // config 7: ???
-			config.push(0); // config 8: ???
-			
+						
+			let mut game_config = GameConfig::new();
 			if config_opt.is_some() {
-				config = config_opt.unwrap();
+				game_config.parameters = config_opt.unwrap();
 			}
 
 			// TODO: add rules (min, max) for different configurations
 
 			if value_opt.is_some() {
-				config[usize::from(index)] = value_opt.unwrap();
+				game_config.parameters[usize::from(index)] = value_opt.unwrap();
 			} else {
-				let config_value = config[usize::from(index)].checked_add(1)
+				let config_value = game_config.parameters[usize::from(index)].checked_add(1)
 					.ok_or("Overflow adding a one to index")?;
-				config[usize::from(index)] = config_value;
+					game_config.parameters[usize::from(index)] = config_value;
 			}
 
 			// updating to the new configuration
-			<AccountConfig<T>>::insert(&sender, &config);
+			<AccountConfig<T>>::insert(&sender, &game_config.parameters);
 
 			// Emit an event.
-			Self::deposit_event(RawEvent::AccountConfigChanged(sender, config));
+			Self::deposit_event(RawEvent::AccountConfigChanged(sender, game_config.parameters));
 			
 			// Return a successful DispatchResult
 			Ok(())
@@ -304,11 +347,7 @@ decl_module! {
 			
 			let sender = ensure_signed(origin)?;
 
-			//let test: &[u8] = $[u8,1];
-			//let sparkle_heart = vec![0, 159, 146, 150];
-			
 			//let data_hash = T::Hashing::hash(random_bytes.as_bytes());
-
 			let block_number = <frame_system::Module<T>>::block_number();
 			//let block_hash = <frame_system::Module<T>>::block_hash(block_number);
 			
@@ -319,10 +358,10 @@ decl_module! {
 							dna: random_hash,
 							genesis: block_number,
 							price: Zero::zero(),
-							gen: 0,
+							gen: 0, // straight created mogwais are hybrid mogwais of gen 0
 			};
 
-			Self::mint(sender, random_hash, new_mogwai)?;
+			Self::mint(sender, random_hash, new_mogwai, None)?;
 			
 			Ok(())
 		}
@@ -417,43 +456,15 @@ decl_module! {
 			let block_number = <frame_system::Module<T>>::block_number();
 
 			let breed_type : BreedType = Self::calculate_breedtype(block_number);
+			  
+			let mut dx: [u8;16] = Default::default();
+			let mut dy: [u8;16] = Default::default();
+			dx.copy_from_slice(&mogwai.dna.as_ref()[0..16]);
+			dy.copy_from_slice(&mogwai.dna.as_ref()[16..32]);
+	
+			let final_dna : [u8;32] = Breeding::pairing(breed_type, dx, dy);	
 
-			let gen = mogwai.dna.as_ref();
-                     
-			let mut final_dna : [u8;32] = [0;32];      
-			
-			let (ll, rr) = final_dna.split_at_mut(16);
-			let (l1, l2) = ll.split_at_mut(8);
-			let (r1, r2) = rr.split_at_mut(8);
-
-			match breed_type {
-				BreedType::DomDom => {
-					l1.copy_from_slice(&gen[..8]);
-					l2.copy_from_slice(&gen[8..16]);
-					r1.copy_from_slice(&gen[16..24]);
-					r2.copy_from_slice(&gen[24..32]);
-				}
-				,
-				BreedType::DomRez => {
-					l1.copy_from_slice(&gen[..8]);
-					l2.copy_from_slice(&gen[8..16]);
-					r1.copy_from_slice(&gen[24..32]);
-					r2.copy_from_slice(&gen[16..24]);
-				},
-				BreedType::RezDom => {
-					l1.copy_from_slice(&gen[8..16]);
-					l2.copy_from_slice(&gen[..8]);
-					r1.copy_from_slice(&gen[24..32]);
-					r2.copy_from_slice(&gen[16..24]);
-				},
-				BreedType::RezRez => {					
-					l1.copy_from_slice(&gen[8..16]);
-					l2.copy_from_slice(&gen[..8]);
-					r1.copy_from_slice(&gen[16..24]);
-					r2.copy_from_slice(&gen[24..32]);
-				},
-			}			
-
+			// don't know a better way
 			for i in 0..32 {
 				mogwai.dna.as_mut()[i] = final_dna[i];
 			}
@@ -479,83 +490,41 @@ decl_module! {
 			let parents = [Self::mogwai(mogwai_id_1) , Self::mogwai(mogwai_id_2)];
 
 			ensure!(parents[0].gen + parents[1].gen != 1, Error::<T>::MogwaiIncompatibleGeneration);
-
+			ensure!(parents[0].gen == 0 ||  MogwaisBios::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiHasNoBios);
+			ensure!(parents[1].gen == 0 ||  MogwaisBios::<T>::contains_key(mogwai_id_2), Error::<T>::MogwaiHasNoBios);
 
 			let next_gen = parents[0].gen + parents[1].gen + 1;
 
-			let random_hash = Self::generate_random_hash(b"breed_mogwai", sender.clone());
+			let mogwai_id = Self::generate_random_hash(b"breed_mogwai", sender.clone());
+			let event_id = Self::generate_random_hash(b"breed_event", sender.clone());
 
-			let block_number = <frame_system::Module<T>>::block_number();
-				
+			let block_number = <frame_system::Module<T>>::block_number();			
 			let breed_type : BreedType = Self::calculate_breedtype(block_number);
 			
-			let mut final_dna : [u8;32] = [0;32];      
-			
-			let (ll, rr) = final_dna.split_at_mut(16);
-			let (l1, l2) = ll.split_at_mut(8);
-			let (r1, r2) = rr.split_at_mut(8);
-
-			match breed_type {
-				BreedType::DomDom => {
-					l1.copy_from_slice(&parents[0].dna.as_ref()[..8]);
-					l2.copy_from_slice(&parents[0].dna.as_ref()[8..16]);
-					r1.copy_from_slice(&parents[1].dna.as_ref()[16..24]);
-					r2.copy_from_slice(&parents[1].dna.as_ref()[24..32]);
-				},
-				BreedType::DomRez => {
-					l1.copy_from_slice(&parents[0].dna.as_ref()[..8]);
-					l2.copy_from_slice(&parents[0].dna.as_ref()[8..16]);
-					r1.copy_from_slice(&parents[1].dna.as_ref()[..8]);
-					r2.copy_from_slice(&parents[1].dna.as_ref()[8..16]);
-				},
-				BreedType::RezDom => {
-					l1.copy_from_slice(&parents[0].dna.as_ref()[16..24]);
-					l2.copy_from_slice(&parents[0].dna.as_ref()[24..32]);
-					r1.copy_from_slice(&parents[1].dna.as_ref()[16..24]);
-					r2.copy_from_slice(&parents[1].dna.as_ref()[24..32]);
-				},
-				BreedType::RezRez => {					
-					l1.copy_from_slice(&parents[0].dna.as_ref()[16..24]);
-					l2.copy_from_slice(&parents[0].dna.as_ref()[24..32]);
-					r1.copy_from_slice(&parents[1].dna.as_ref()[..8]);
-					r2.copy_from_slice(&parents[1].dna.as_ref()[8..16]);
-				},
+			let mut dx: [u8;16] = Default::default();
+			let mut dy: [u8;16] = Default::default();
+			if parents[0].gen + parents[1].gen == 0 {
+				dx.copy_from_slice(&parents[0].dna.as_ref()[0..16]);
+				dy.copy_from_slice(&parents[1].dna.as_ref()[16..32]);
+			} else {
+				let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
+				let mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
+				dx = mogwai_bios_1.metaxy[0];
+				dy = mogwai_bios_2.metaxy[0];
 			}
 
-			let mut final_dna_hash = random_hash.clone();
+			let final_dna : [u8;32] = Breeding::pairing(breed_type, dx, dy);	
+			
+			// don't know a better way, then using a clone.
+			let mut final_dna_hash = mogwai_id.clone();
 			for i in 0..32 {
 				final_dna_hash.as_mut()[i] = final_dna[i];
 			}
 
-			//for i in 0..63 {
-			//	match breed_type {
-			//		BreedType::DomDom => 
-			//		if i < 32 { 
-			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
-			//		} else { 
-			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
-			//		},
-			//		BreedType::DomRez => 
-			//		if i < 32 { 
-			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i]
-			//		} else { 
-			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
-			//		},
-			//		BreedType::RezDom => 
-			//		if i < 32 { 
-			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
-			//		} else { 
-			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i]
-			//		},
-			//		BreedType::RezRez => 					
-			//		if i < 32 { 
-			//			final_dna.as_mut()[i] = parents[0].dna.as_ref()[i+32]
-			//		} else { 
-			//			final_dna.as_mut()[i] = parents[1].dna.as_ref()[i-32]
-			//		},
-			//		_ => final_dna.as_mut()[i] = parents[0].dna.as_ref()[i],
-			//	}			
-			//}
+			// TODO: still no clue how to get the Hash type filled straight
+			//let mut test_u8 : [u8;32] = [0;32];
+			//let mut test_h256 = H256::from_slice(&test_u8);
+			//let mut test_hash : T::Hash = test_h256.into();
 
 			//let mut final_dna = parents[0].dna;
 			//for (i, (dna_2_element, r)) in parents[1].dna.as_ref().iter().zip(random_hash.as_ref().iter()).enumerate() {
@@ -566,15 +535,28 @@ decl_module! {
 
 			//let block_hash = <frame_system::Module<T>>::block_hash(block_number);
 
-			let new_mogwai = MogwaiStruct {
-                id: random_hash,
+			let mut mogwai_ids: Vec<T::Hash> = Vec::new();
+			mogwai_ids.push(mogwai_id);
+
+			let mogwai_struct = MogwaiStruct {
+				id: mogwai_id,
 				dna: final_dna_hash,
 				genesis: block_number,
-                price: Zero::zero(),
+				price: Zero::zero(),
 				gen: next_gen,
-            };
+			};
 
-			Self::mint(sender, random_hash, new_mogwai)?;
+			let game_event = GameEvent {
+				id: event_id,
+				begin: block_number + GameEventType::time_till(GameEventType::Hatch).into(),
+				duration: GameEventType::duration(GameEventType::Hatch).into(),
+				event_type: GameEventType::Hatch,
+				hashes: mogwai_ids,
+				value: 0,
+			};
+
+			// mint mogwai
+			Self::mint(sender, mogwai_id, mogwai_struct, Some(game_event))?;
 
 			Ok(())
 		}
@@ -663,54 +645,13 @@ decl_module! {
 		/// On finalize
 		fn on_finalize() {
 
-			let auctions = Self::auctions_expire_at(<frame_system::Module<T>>::block_number());
+			let block_number = <frame_system::Module<T>>::block_number();
 
-			for auction in &auctions {
+			let auctions = Self::auctions_expire_at(block_number);
+			Self::finalize_auctions(auctions);
 
-                let owned_mogwais_count_from = Self::owned_mogwais_count(&auction.mogwai_owner);
-
-				let owned_mogwais_count_to = Self::owned_mogwais_count(&auction.high_bidder);
-
-				if owned_mogwais_count_to.checked_add(1).is_some() &&
-				   owned_mogwais_count_from.checked_sub(1).is_some() &&
-                   auction.mogwai_owner != auction.high_bidder
-                {
-					<MogwaiAuction<T>>::remove(auction.mogwai_id);
-
-					let _ = T::Currency::unreserve(&auction.high_bidder, auction.high_bid);
-					
-					let _currency_transfer = T::Currency::transfer(&auction.high_bidder, &auction.mogwai_owner, auction.high_bid, AllowDeath);
-
-					match _currency_transfer {
-                        Err(_e) => continue,
-                        Ok(_v) => {
-                            let _kitty_transfer = Self::transfer_from(auction.mogwai_owner.clone(), auction.high_bidder.clone(), auction.mogwai_id);
-                            match _kitty_transfer {
-                                Err(_e) => continue,
-                                Ok(_v) => {
-                                    Self::deposit_event(RawEvent::AuctionFinalized(auction.mogwai_id, auction.high_bid, auction.expiry));
-                                },
-                            }
-                        },
-                    }
-                }
-			}
-			
-            for auction in &auctions {
-
-				<Auctions<T>>::remove(<frame_system::Module<T>>::block_number());
-				
-				let bid_accounts = Self::bid_accounts(auction.mogwai_id);
-
-				for account in bid_accounts {
-
-                    let bid_balance = Self::bid_of((auction.mogwai_id, account.clone()));
-                    let _ = T::Currency::unreserve(&account, bid_balance);
-                    <Bids<T>>::remove((auction.mogwai_id, account));
-				}
-				
-				<BidAccounts<T>>::remove(auction.mogwai_id);
-            }
+			let game_events = Self::game_events_at_block(block_number);
+			Self::finalize_events(block_number, game_events);
 		}
 	}
 }
@@ -725,9 +666,8 @@ impl<T: Trait> Module<T> {
 		nonce.encode()
 	}
 
-	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>) -> dispatch::DispatchResult {
+	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>, game_event_opt: Option<GameEvent<T::Hash, T::BlockNumber, GameEventType>>) -> dispatch::DispatchResult {
 
-		//ensure!(<MogwaiOwner<T>>::contains_key(&mogwai_id), "Mogwai already exists!");
 		ensure!(!MogwaiOwner::<T>::contains_key(&mogwai_id), Error::<T>::MogwaiAlreadyExists);
 
 		let owned_mogwais_count = Self::owned_mogwais_count(&to);
@@ -737,6 +677,11 @@ impl<T: Trait> Module<T> {
 		let all_mogwais_count = Self::all_mogwais_count();
 		let new_all_mogwais_count = all_mogwais_count.checked_add(1)
 			.ok_or("Overflow adding a new mogwai to total supply")?;
+
+		// if there is an event, ensure it is successfull
+		if game_event_opt.is_some() {
+			Self::create_event(to.clone(), game_event_opt.unwrap())?;
+		}
 
 		// Update maps.
 		<Mogwais<T>>::insert(mogwai_id, new_mogwai);
@@ -756,6 +701,43 @@ impl<T: Trait> Module<T> {
 		Ok(())
 	}
 
+	fn create_event(to: T::AccountId, new_game_event: GameEvent<T::Hash, T::BlockNumber, GameEventType>) -> dispatch::DispatchResult {
+				
+		let event_id = new_game_event.id.clone();
+		let event_type = new_game_event.event_type.clone();
+
+		ensure!(!GameEvents::<T>::contains_key(&event_id), Error::<T>::GameEventAlreadyExists);
+
+		let event_type_events_count = Self::game_event_of_type_count(&event_type);
+		let new_event_type_events_count = event_type_events_count.checked_add(1)
+			.ok_or("Overflow adding a new event to the event type events map")?;
+
+		let all_events_count = Self::all_game_events_count();
+		let new_all_events_count = all_events_count.checked_add(1)
+			.ok_or("Overflow adding a new event to all events map")?;
+
+		let game_events = Self::game_events_at_block(&new_game_event.begin);
+		ensure!(game_events.len() < MAX_EVENTS_PER_BLOCK, "Maximum number of events is reached for target block, operation blocked.");
+
+		// updated event maps.
+		<GameEventsAtBlock<T>>::mutate(new_game_event.begin, |game_events| game_events.push(event_id.clone()));
+
+		<GameEvents<T>>::insert(event_id, new_game_event);
+		
+		<AllGameEventsArray<T>>::insert(all_events_count, event_id);
+        AllGameEventsCount::put(new_all_events_count);
+		<AllGameEventsIndex<T>>::insert(event_id, all_events_count);
+		
+		<GameEventsArray<T>>::insert((event_type.clone(), event_type_events_count), event_id);
+        GameEventsCount::insert(&event_type, new_event_type_events_count);
+        <GameEventsIndex<T>>::insert(event_id, event_type_events_count);
+
+		// Emit an event.
+		Self::deposit_event(RawEvent::GameEventCreated(to, event_id));
+
+		Ok(())
+	}
+
 	fn remove(from: T::AccountId, mogwai_id: T::Hash) -> dispatch::DispatchResult {
 
 		ensure!(MogwaiOwner::<T>::contains_key(&mogwai_id), Error::<T>::MogwaiDoesntExists);
@@ -770,6 +752,7 @@ impl<T: Trait> Module<T> {
 
 		// Update maps.
 		<Mogwais<T>>::remove(mogwai_id);
+		<MogwaisBios<T>>::remove(mogwai_id);
 		<MogwaiOwner<T>>::remove(mogwai_id);
 					
         let all_mogwai_index = <AllMogwaisIndex<T>>::get(mogwai_id);
@@ -864,6 +847,143 @@ impl<T: Trait> Module<T> {
 			return BreedType::RezDom;
 		} else {
 			return BreedType::RezRez;
+		}
+	}
+
+	fn finalize_auctions(auctions: Vec<Auction<T::Hash, BalanceOf<T>, T::BlockNumber, T::AccountId>>) -> () {
+			
+		for auction in &auctions {
+			let owned_mogwais_count_from = Self::owned_mogwais_count(&auction.mogwai_owner);
+			let owned_mogwais_count_to = Self::owned_mogwais_count(&auction.high_bidder);
+
+			if owned_mogwais_count_to.checked_add(1).is_some() &&
+			   owned_mogwais_count_from.checked_sub(1).is_some() &&
+			   auction.mogwai_owner != auction.high_bidder
+			{
+				<MogwaiAuction<T>>::remove(auction.mogwai_id);
+				let _ = T::Currency::unreserve(&auction.high_bidder, auction.high_bid);		
+				let _currency_transfer = T::Currency::transfer(&auction.high_bidder, &auction.mogwai_owner, auction.high_bid, AllowDeath);
+				match _currency_transfer {
+					Err(_e) => continue,
+					Ok(_v) => {
+						let _kitty_transfer = Self::transfer_from(auction.mogwai_owner.clone(), auction.high_bidder.clone(), auction.mogwai_id);
+						match _kitty_transfer {
+							Err(_e) => continue,
+							Ok(_v) => {
+								Self::deposit_event(RawEvent::AuctionFinalized(auction.mogwai_id, auction.high_bid, auction.expiry));
+							},
+						}
+					},
+				}
+			}
+		}
+		
+		for auction in &auctions {
+			<Auctions<T>>::remove(<frame_system::Module<T>>::block_number());
+			let bid_accounts = Self::bid_accounts(auction.mogwai_id);
+			for account in bid_accounts {
+
+				let bid_balance = Self::bid_of((auction.mogwai_id, account.clone()));
+				let _ = T::Currency::unreserve(&account, bid_balance);
+				<Bids<T>>::remove((auction.mogwai_id, account));
+			}
+			<BidAccounts<T>>::remove(auction.mogwai_id);
+		}
+	}
+
+	fn finalize_events(block_number: T::BlockNumber, game_event_hashes: Vec<T::Hash>) ->  () {
+
+		// removing all events on this block
+		<GameEventsAtBlock<T>>::remove(block_number);
+
+		for game_event_hash in &game_event_hashes {
+			
+			let game_event = Self::game_events(game_event_hash);
+
+			// clean-up game events
+			<GameEvents<T>>::remove(&game_event.id);
+
+			let all_events_count = Self::all_game_events_count();
+			let all_count_sub_opt = all_events_count.checked_sub(1);
+			if all_count_sub_opt.is_some() {
+				let new_all_events_count = all_count_sub_opt.unwrap();
+				let all_events_index = <AllGameEventsIndex<T>>::get(&game_event.id);
+				if all_events_index != new_all_events_count {
+					let all_last_event = <AllGameEventsArray<T>>::get(new_all_events_count);
+					<AllGameEventsArray<T>>::insert(all_events_index, all_last_event);
+					<AllGameEventsIndex<T>>::insert(all_last_event, all_events_index);
+				}
+				<AllGameEventsArray<T>>::remove(new_all_events_count);
+				AllGameEventsCount::put(new_all_events_count);
+				<AllGameEventsIndex<T>>::remove(&game_event.id);
+			}
+
+			let event_type_events_count = Self::game_event_of_type_count(&game_event.event_type);
+			let event_count_sub_opt = event_type_events_count.checked_sub(1);
+			if event_count_sub_opt.is_some() {
+				let new_event_type_events_count = event_count_sub_opt.unwrap();
+				let event_index = <GameEventsIndex<T>>::get(&game_event.id);
+				if event_index != new_event_type_events_count {
+					let last_event_id = <GameEventsArray<T>>::get((game_event.event_type.clone(), new_event_type_events_count));
+					<GameEventsArray<T>>::insert((game_event.event_type.clone(), event_index), last_event_id);
+					<GameEventsIndex<T>>::insert(last_event_id, event_index);
+				}
+				<GameEventsArray<T>>::remove((game_event.event_type.clone(), new_event_type_events_count));
+				GameEventsCount::insert(&game_event.event_type, new_event_type_events_count);
+				<GameEventsIndex<T>>::remove(&game_event.id);
+			}
+
+			// finally execute the event at the end of the clean up
+			match game_event.event_type {
+				GameEventType::Hatch => Self::execute_event_hatch(game_event.clone()),
+				GameEventType::Default => { },
+			};
+
+			Self::deposit_event(RawEvent::GameEventExecuted(game_event.id));
+
+		}
+	}
+
+	/// TODO: check if it is more optimzed when multiple hatching events are gathered in one event, instead of each in one of it's own.
+	fn execute_event_hatch(game_event: GameEvent<T::Hash, T::BlockNumber, GameEventType>) -> () {
+
+		for mogwai_id in game_event.hashes.iter() {
+
+			if !Mogwais::<T>::contains_key(mogwai_id) || MogwaisBios::<T>::contains_key(mogwai_id) {
+				// if there is no mogwai or it has already a bios we skip this part, as something bad happend
+				continue;
+			}
+
+			let mogwai_struct = Self::mogwai(mogwai_id);
+			let block_hash = <frame_system::Module<T>>::block_hash(mogwai_struct.genesis);
+
+			let mut dna: [u8; 32] = Default::default();
+			let mut blk: [u8; 32] = Default::default();
+
+			dna.copy_from_slice(&mogwai_struct.dna.as_ref()[0..32]);
+			blk.copy_from_slice(&block_hash.as_ref()[0..32]);
+
+			// segmenting the hatched mogwai
+			let (dna,evo) = Breeding::segmenting(dna,blk);
+
+			let mut metaxy = Vec::new();
+			metaxy.push(dna);
+			metaxy.push(evo);
+
+			let mut phases = Vec::new();
+			phases.push(game_event.begin);
+
+			let mogwai_bio = MogwaiBios {
+				mogwai_id: mogwai_id.clone(),
+				state: 0,
+				metaxy: metaxy,
+				intrinsic: Zero::zero(),
+				level: 1,
+				phases: phases,
+				adaptations: Vec::new(),
+			};
+
+			<MogwaisBios<T>>::insert(mogwai_id, mogwai_bio);
 		}
 	}
 }

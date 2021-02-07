@@ -16,7 +16,6 @@ use frame_support::{decl_module, decl_storage, decl_event, decl_error, ensure, c
 use frame_system::{ensure_signed};
 use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
 use sp_std::vec::{Vec};
-//use rand_chacha::{rand_core::{RngCore, SeedableRng}, ChaChaRng};
 
 #[cfg(test)]
 mod mock;
@@ -224,6 +223,8 @@ decl_error! {
 		MogwaiAlreadyExists,
 		/// The mogwais hash doesn't exist.
 		MogwaiDoesntExists,
+		/// The mogwai isn't owned by the sender.
+		MogwaiNotOwned,
 		/// The submitted index is out of range.
 		ConfigIndexOutOfRange,
 		/// Incompatible generation
@@ -389,13 +390,28 @@ decl_module! {
 
 			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
 			
-			ensure!(owner == sender, "You don't own this mogwai");
+			ensure!(owner == sender, Error::<T>::MogwaiNotOwned);
 
             Self::transfer_from(sender, to, mogwai_id)?;
 
             Ok(())
 		}
 		
+		/// Sacrifice mogwai to an other mogwai.
+		#[weight = 10_000 + T::DbWeight::get().writes(1)]
+		fn sacrifice(origin, mogwai_id_1: T::Hash, mogwai_id_2: T::Hash) -> dispatch::DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+
+			let owner = Self::owner_of(mogwai_id_1).ok_or("No owner for this mogwai")?;
+			
+			ensure!(owner == sender, Error::<T>::MogwaiNotOwned);
+
+			// TODO: implement sacrifice ... 
+
+            Ok(())
+		}
+
 		/// Buy a mogwai.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
 		fn buy_mogwai(origin, mogwai_id: T::Hash, max_price: BalanceOf<T>) -> dispatch::DispatchResult {
@@ -944,6 +960,35 @@ impl<T: Trait> Module<T> {
 		}
 	}
 
+	fn segment(mogwai_struct: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>, block_hash: T::Hash, phase: T::BlockNumber) -> MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> {
+		
+		let mut dna: [u8; 32] = Default::default();
+		let mut blk: [u8; 32] = Default::default();
+
+		dna.copy_from_slice(&mogwai_struct.dna.as_ref()[0..32]);
+		blk.copy_from_slice(&block_hash.as_ref()[0..32]);
+
+		// segmenting the hatched mogwai
+		let (dna,evo) = Breeding::segmenting(dna,blk);
+
+		let mut metaxy = Vec::new();
+		metaxy.push(dna);
+		metaxy.push(evo);
+
+		let mut phases = Vec::new();
+		phases.push(phase);
+
+		MogwaiBios {
+			mogwai_id: mogwai_struct.id.clone(),
+			state: 0,
+			metaxy: metaxy,
+			intrinsic: Zero::zero(),
+			level: 1,
+			phases: phases,
+			adaptations: Vec::new(),
+		}
+	}
+
 	/// TODO: check if it is more optimzed when multiple hatching events are gathered in one event, instead of each in one of it's own.
 	fn execute_event_hatch(game_event: GameEvent<T::Hash, T::BlockNumber, GameEventType>) -> () {
 
@@ -957,31 +1002,33 @@ impl<T: Trait> Module<T> {
 			let mogwai_struct = Self::mogwai(mogwai_id);
 			let block_hash = <frame_system::Module<T>>::block_hash(mogwai_struct.genesis);
 
-			let mut dna: [u8; 32] = Default::default();
-			let mut blk: [u8; 32] = Default::default();
+			// let mut dna: [u8; 32] = Default::default();
+			// let mut blk: [u8; 32] = Default::default();
 
-			dna.copy_from_slice(&mogwai_struct.dna.as_ref()[0..32]);
-			blk.copy_from_slice(&block_hash.as_ref()[0..32]);
+			// dna.copy_from_slice(&mogwai_struct.dna.as_ref()[0..32]);
+			// blk.copy_from_slice(&block_hash.as_ref()[0..32]);
 
-			// segmenting the hatched mogwai
-			let (dna,evo) = Breeding::segmenting(dna,blk);
+			// // segmenting the hatched mogwai
+			// let (dna,evo) = Breeding::segmenting(dna,blk);
 
-			let mut metaxy = Vec::new();
-			metaxy.push(dna);
-			metaxy.push(evo);
+			// let mut metaxy = Vec::new();
+			// metaxy.push(dna);
+			// metaxy.push(evo);
 
-			let mut phases = Vec::new();
-			phases.push(game_event.begin);
+			// let mut phases = Vec::new();
+			// phases.push(game_event.begin);
 
-			let mogwai_bio = MogwaiBios {
-				mogwai_id: mogwai_id.clone(),
-				state: 0,
-				metaxy: metaxy,
-				intrinsic: Zero::zero(),
-				level: 1,
-				phases: phases,
-				adaptations: Vec::new(),
-			};
+			// let mogwai_bio = MogwaiBios {
+			// 	mogwai_id: mogwai_id.clone(),
+			// 	state: 0,
+			// 	metaxy: metaxy,
+			// 	intrinsic: Zero::zero(),
+			// 	level: 1,
+			// 	phases: phases,
+			// 	adaptations: Vec::new(),
+			// };
+
+			let mogwai_bio = Self::segment(mogwai_struct, block_hash, game_event.begin);
 
 			<MogwaisBios<T>>::insert(mogwai_id, mogwai_bio);
 		}

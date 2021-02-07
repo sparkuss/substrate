@@ -4431,7 +4431,6 @@ dependencies = [
  "frame-support",
  "frame-system",
  "parity-scale-codec",
- "rand_chacha 0.2.2",
  "sp-core",
  "sp-io",
  "sp-runtime",

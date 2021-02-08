@@ -364,6 +364,31 @@ pub struct Epoch {
 	pub randomness: [u8; VRF_OUTPUT_LENGTH],
 }
 
+/// BABE epoch information with `c` and `allowed_slots`
+#[derive(Decode, Encode, PartialEq, Eq, Clone, Debug)]
+pub struct StandaloneEpoch {
+	/// The epoch index.
+	pub epoch_index: u64,
+	/// The starting slot of the epoch.
+	pub start_slot: Slot,
+	/// The duration of this epoch.
+	pub duration: u64,
+	/// The authorities and their weights.
+	pub authorities: Vec<(AuthorityId, BabeAuthorityWeight)>,
+	/// Randomness for this epoch.
+	pub randomness: [u8; VRF_OUTPUT_LENGTH],
+	/// A constant value that is used in the threshold calculation formula.
+	/// Expressed as a rational where the first member of the tuple is the
+	/// numerator and the second is the denominator. The rational should
+	/// represent a value between 0 and 1.
+	/// In the threshold formula calculation, `1 - c` represents the probability
+	/// of a slot being empty.
+	pub c: (u64, u64),
+	/// Whether this chain should run with secondary slots, which are assigned
+	/// in round-robin manner.
+	pub allowed_slots: AllowedSlots,
+}
+
 sp_api::decl_runtime_apis! {
 	/// API necessary for block authorship with BABE.
 	#[api_version(2)]
@@ -379,11 +404,11 @@ sp_api::decl_runtime_apis! {
 		fn current_epoch_start() -> Slot;
 
 		/// Returns information regarding the current epoch.
-		fn current_epoch() -> Epoch;
+		fn current_epoch() -> StandaloneEpoch;
 
 		/// Returns information regarding the next epoch (which was already
 		/// previously announced).
-		fn next_epoch() -> Epoch;
+		fn next_epoch() -> StandaloneEpoch;
 
 		/// Generates a proof of key ownership for the given authority in the
 		/// current epoch. An example usage of this module is coupled with the

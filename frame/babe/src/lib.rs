@@ -43,7 +43,8 @@ use sp_timestamp::OnTimestampSet;
 use sp_consensus_babe::{
 	digests::{NextConfigDescriptor, NextEpochDescriptor, PreDigest},
 	inherents::{BabeInherentData, INHERENT_IDENTIFIER},
-	BabeAuthorityWeight, ConsensusLog, Epoch, EquivocationProof, Slot, BABE_ENGINE_ID,
+	BabeAuthorityWeight, ConsensusLog, EquivocationProof, Slot, BABE_ENGINE_ID, StandaloneEpoch,
+	BabeEpochConfiguration,
 };
 use sp_consensus_vrf::schnorrkel;
 use sp_inherents::{InherentData, InherentIdentifier, MakeFatalError, ProvideInherent};
@@ -187,6 +188,9 @@ decl_storage! {
 		// array size because the metadata API currently doesn't resolve the
 		// variable to its underlying value.
 		pub Randomness get(fn randomness): schnorrkel::Randomness;
+
+		/// The Current epoch configuration.
+		EpochConfig: Option<BabeEpochConfiguration>;
 
 		/// Next epoch configuration, if changed.
 		NextEpochConfig: Option<NextConfigDescriptor>;
@@ -486,6 +490,8 @@ impl<T: Config> Module<T> {
 		Self::deposit_consensus(ConsensusLog::NextEpochData(next_epoch));
 
 		if let Some(next_config) = NextEpochConfig::take() {
+			let config: BabeEpochConfiguration = next_config.clone().into();
+			EpochConfig::put(config);
 			Self::deposit_consensus(ConsensusLog::NextConfigData(next_config));
 		}
 	}
@@ -498,30 +504,38 @@ impl<T: Config> Module<T> {
 	}
 
 	/// Produces information about the current epoch.
-	pub fn current_epoch() -> Epoch {
-		Epoch {
+	pub fn current_epoch() -> StandaloneEpoch {
+		let epoch_config = EpochConfig::get().unwrap();
+
+		StandaloneEpoch {
 			epoch_index: EpochIndex::get(),
 			start_slot: Self::current_epoch_start(),
 			duration: T::EpochDuration::get(),
 			authorities: Self::authorities(),
 			randomness: Self::randomness(),
+			c: epoch_config.c,
+			allowed_slots: epoch_config.allowed_slots,
 		}
 	}
 
 	/// Produces information about the next epoch (which was already previously
 	/// announced).
-	pub fn next_epoch() -> Epoch {
+	pub fn next_epoch() -> StandaloneEpoch {
 		let next_epoch_index = EpochIndex::get().checked_add(1).expect(
 			"epoch index is u64; it is always only incremented by one; \
 			 if u64 is not enough we should crash for safety; qed.",
 		);
 
-		Epoch {
+		let epoch_config = EpochConfig::get().unwrap();
+
+		StandaloneEpoch {
 			epoch_index: next_epoch_index,
 			start_slot: Self::epoch_start(next_epoch_index),
 			duration: T::EpochDuration::get(),
 			authorities: NextAuthorities::get(),
 			randomness: NextRandomness::get(),
+			c: epoch_config.c,
+			allowed_slots: epoch_config.allowed_slots,
 		}
 	}
 

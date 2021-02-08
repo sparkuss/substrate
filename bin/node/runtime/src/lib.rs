@@ -1205,11 +1205,11 @@ impl_runtime_apis! {
 			Babe::current_epoch_start()
 		}
 
-		fn current_epoch() -> sp_consensus_babe::Epoch {
+		fn current_epoch() -> sp_consensus_babe::StandaloneEpoch {
 			Babe::current_epoch()
 		}
 
-		fn next_epoch() -> sp_consensus_babe::Epoch {
+		fn next_epoch() -> sp_consensus_babe::StandaloneEpoch {
 			Babe::next_epoch()
 		}
 

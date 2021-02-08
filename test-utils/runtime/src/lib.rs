@@ -743,11 +743,11 @@ cfg_if! {
 					<pallet_babe::Module<Runtime>>::current_epoch_start()
 				}
 
-				fn current_epoch() -> sp_consensus_babe::Epoch {
+				fn current_epoch() -> sp_consensus_babe::StandaloneEpoch {
 					<pallet_babe::Module<Runtime>>::current_epoch()
 				}
 
-				fn next_epoch() -> sp_consensus_babe::Epoch {
+				fn next_epoch() -> sp_consensus_babe::StandaloneEpoch {
 					<pallet_babe::Module<Runtime>>::next_epoch()
 				}
 
@@ -1002,11 +1002,11 @@ cfg_if! {
 					<pallet_babe::Module<Runtime>>::current_epoch_start()
 				}
 
-				fn current_epoch() -> sp_consensus_babe::Epoch {
+				fn current_epoch() -> sp_consensus_babe::StandaloneEpoch {
 					<pallet_babe::Module<Runtime>>::current_epoch()
 				}
 
-				fn next_epoch() -> sp_consensus_babe::Epoch {
+				fn next_epoch() -> sp_consensus_babe::StandaloneEpoch {
 					<pallet_babe::Module<Runtime>>::next_epoch()
 				}
 

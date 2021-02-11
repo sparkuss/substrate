@@ -12,7 +12,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::{decl_module, decl_storage, decl_event, decl_error, ensure, codec::{Encode, Decode}, dispatch, traits::{Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement::AllowDeath}};
+use frame_support::{
+	decl_module, decl_error, decl_event, decl_storage, ensure, codec::{Encode, Decode}, dispatch, 
+	traits::{
+		Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement::AllowDeath
+	}};
 use frame_system::{ensure_signed};
 use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
 use sp_std::vec::{Vec};
@@ -80,13 +84,18 @@ pub struct Auction<Hash, Balance, BlockNumber, AccountId> {
 	high_bidder: AccountId,
 }
 
-type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as frame_system::Trait>::AccountId>>::Balance;
+type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
-pub trait Trait: frame_system::Trait {
-	/// Because this pallet emits events, it depends on the runtime's definition of an event.
-	type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
+pub trait Config: frame_system::Config {
+	
+	/// The overarching event type.
+	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
+
+	/// The currency trait.
 	type Currency: ReservableCurrency<Self::AccountId>;
+
+	/// Something that provides randomness in the runtime.
 	type Randomness: Randomness<Self::Hash>;
 }
 
@@ -96,7 +105,7 @@ decl_storage! {
 	// A unique name is used to ensure that the pallet's storage items are isolated.
 	// This name may be updated, but each pallet in the runtime must use a unique name.
 	// ---------------------------------vvvvvvvvvvvvvv
-	trait Store for Module<T: Trait> as DotMogModule {
+	trait Store for Module<T: Config> as DotMogModule {
 		
 		// Learn more about declaring storage items:
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
@@ -166,12 +175,12 @@ decl_storage! {
 // Pallets use events to inform users when important changes are made.
 // https://substrate.dev/docs/en/knowledgebase/runtime/events
 decl_event!(
-	pub enum Event<T> 
-	where 
-	AccountId = <T as frame_system::Trait>::AccountId,	
-	Hash = <T as frame_system::Trait>::Hash,
-	BlockNumber = <T as frame_system::Trait>::BlockNumber,
-	Balance = BalanceOf<T> {
+	pub enum Event<T> where 
+		<T as frame_system::Config>::AccountId,	
+		<T as frame_system::Config>::Hash,
+		<T as frame_system::Config>::BlockNumber,
+		Balance = BalanceOf<T>,
+	{
 
 		/// Event documentation should end with an array that provides descriptive names for event
 		/// parameters. [something, who]
@@ -214,7 +223,7 @@ decl_event!(
 
 // Errors inform users that something went wrong.
 decl_error! {
-	pub enum Error for Module<T: Trait> {
+	pub enum Error for Module<T: Config> {
 		/// Error names should be descriptive.
 		NoneValue,
 		/// A Storage overflow, has occured make sure to validate first.
@@ -240,7 +249,7 @@ decl_error! {
 // These functions materialize as "extrinsics", which are often compared to transactions.
 // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 decl_module! {
-	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+	pub struct Module<T: Config> for enum Call where origin: T::Origin {
 		// Errors must be initialized if they are used by the pallet.
 		type Error = Error<T>;
 
@@ -672,7 +681,7 @@ decl_module! {
 	}
 }
 
-impl<T: Trait> Module<T> {
+impl<T: Config> Module<T> {
 
 	/// Reads the nonce from storage, increments the stored nonce, and returns
 	/// the encoded nonce to the caller.

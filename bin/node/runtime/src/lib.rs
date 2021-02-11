@@ -1008,7 +1008,7 @@ impl pallet_assets::Config for Runtime {
 }
 
 /// Configure the pallet dotmog in pallets/dotmog.
-impl pallet_dotmog::Trait for Runtime {
+impl pallet_dotmog::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type Randomness = RandomnessCollectiveFlip;
@@ -1056,7 +1056,7 @@ construct_runtime!(
 		Assets: pallet_assets::{Module, Call, Storage, Event<T>},
 		Mmr: pallet_mmr::{Module, Storage},
 		Lottery: pallet_lottery::{Module, Call, Storage, Event<T>},
-    // Include the custom logic from the dotmog pallet in the runtime.
+    	// Include the custom logic from the dotmog pallet in the runtime.
 		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>},
   }
 );

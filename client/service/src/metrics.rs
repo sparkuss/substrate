@@ -21,7 +21,7 @@ use std::{convert::TryFrom, time::SystemTime};
 use crate::{NetworkStatus, NetworkState, NetworkStatusSinks, config::Configuration};
 use futures_timer::Delay;
 use prometheus_endpoint::{register, Gauge, U64, Registry, PrometheusError, Opts, GaugeVec};
-use sc_telemetry::{telemetry, SUBSTRATE_INFO};
+use sc_telemetry::{telemetry, Telemetry, SUBSTRATE_INFO};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::{NumberFor, Block, SaturatedConversion, UniqueSaturatedInto};
 use sp_transaction_pool::{PoolStatus, MaintainedTransactionPool};
@@ -112,6 +112,7 @@ pub struct MetricsService {
 	last_update: Instant,
 	last_total_bytes_inbound: u64,
 	last_total_bytes_outbound: u64,
+	telemetry: Option<Telemetry>,
 }
 
 impl MetricsService {
@@ -123,6 +124,7 @@ impl MetricsService {
 			last_total_bytes_inbound: 0,
 			last_total_bytes_outbound: 0,
 			last_update: Instant::now(),
+			telemetry: None, // TODO how to inject
 		}
 	}
 
@@ -150,6 +152,7 @@ impl MetricsService {
 			last_total_bytes_inbound: 0,
 			last_total_bytes_outbound: 0,
 			last_update: Instant::now(),
+			telemetry: None,
 		})
 	}
 
@@ -246,8 +249,7 @@ impl MetricsService {
 
 		// Update/send metrics that are always available.
 		telemetry!(
-			SUBSTRATE_INFO;
-			"system.interval";
+			self.telemetry; SUBSTRATE_INFO; "system.interval";
 			"height" => best_number,
 			"best" => ?best_hash,
 			"txcount" => txpool_status.ready,
@@ -308,8 +310,7 @@ impl MetricsService {
 				};
 
 			telemetry!(
-				SUBSTRATE_INFO;
-				"system.interval";
+				self.telemetry; SUBSTRATE_INFO; "system.interval";
 				"peers" => num_peers,
 				"bandwidth_download" => avg_bytes_per_sec_inbound,
 				"bandwidth_upload" => avg_bytes_per_sec_outbound,
@@ -329,8 +330,7 @@ impl MetricsService {
 		// Send network state information, if any.
 		if let Some(net_state) = net_state {
 			telemetry!(
-				SUBSTRATE_INFO;
-				"system.network_state";
+				self.telemetry; SUBSTRATE_INFO; "system.network_state";
 				"state" => net_state,
 			);
 		}

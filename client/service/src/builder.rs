@@ -54,9 +54,8 @@ use std::sync::Arc;
 use wasm_timer::SystemTime;
 use sc_telemetry::{
 	telemetry,
+	Telemetry,
 	ConnectionMessage,
-	TelemetryConnectionNotifier,
-	TelemetrySpan,
 	SUBSTRATE_INFO,
 };
 use sp_transaction_pool::MaintainedTransactionPool;
@@ -492,10 +491,6 @@ pub struct SpawnTasksParams<'a, TBl: BlockT, TCl, TExPool, TRpc, Backend> {
 	pub network_status_sinks: NetworkStatusSinks<TBl>,
 	/// A Sender for RPC requests.
 	pub system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<TBl>>,
-	/// Telemetry span.
-	///
-	/// This span needs to be entered **before** calling [`spawn_tasks()`].
-	pub telemetry_span: Option<TelemetrySpan>,
 }
 
 /// Build a shared offchain workers instance.
@@ -542,7 +537,7 @@ pub fn build_offchain_workers<TBl, TBackend, TCl>(
 /// Spawn the tasks that are required to run a node.
 pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 	params: SpawnTasksParams<TBl, TCl, TExPool, TRpc, TBackend>,
-) -> Result<(RpcHandlers, Option<TelemetryConnectionNotifier>), Error>
+) -> Result<(RpcHandlers, Option<Telemetry>), Error>
 	where
 		TCl: ProvideRuntimeApi<TBl> + HeaderMetadata<TBl, Error=sp_blockchain::Error> + Chain<TBl> +
 		BlockBackend<TBl> + BlockIdTo<TBl, Error=sp_blockchain::Error> + ProofProvider<TBl> +
@@ -565,7 +560,7 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 	let SpawnTasksParams {
 		mut config,
 		task_manager,
-		client,
+		mut client,
 		on_demand,
 		backend,
 		keystore,
@@ -575,7 +570,6 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 		network,
 		network_status_sinks,
 		system_rpc_tx,
-		telemetry_span,
 	} = params;
 
 	let chain_info = client.usage_info().chain;
@@ -586,12 +580,15 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 		config.dev_key_seed.clone().map(|s| vec![s]).unwrap_or_default(),
 	)?;
 
-	let telemetry_connection_notifier = init_telemetry(
+	let telemetry = init_telemetry(
 		&mut config,
-		telemetry_span,
 		network.clone(),
 		client.clone(),
 	);
+
+	if let Some(telemetry) = telemetry.clone() {
+		client.set_telemetry(telemetry);
+	}
 
 	info!("📦 Highest known block at #{}", chain_info.best_number);
 
@@ -605,7 +602,7 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 
 	spawn_handle.spawn(
 		"on-transaction-imported",
-		transaction_notifications(transaction_pool.clone(), network.clone()),
+		transaction_notifications(transaction_pool.clone(), network.clone(), telemetry.clone()),
 	);
 
 	// Prometheus metrics.
@@ -661,12 +658,13 @@ pub fn spawn_tasks<TBl, TBackend, TExPool, TRpc, TCl>(
 
 	task_manager.keep_alive((config.base_path, rpc, rpc_handlers.clone()));
 
-	Ok((rpc_handlers, telemetry_connection_notifier))
+	Ok((rpc_handlers, telemetry))
 }
 
 async fn transaction_notifications<TBl, TExPool>(
 	transaction_pool: Arc<TExPool>,
 	network: Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
+	mut telemetry: Option<Telemetry>,
 )
 	where
 		TBl: BlockT,
@@ -678,9 +676,10 @@ async fn transaction_notifications<TBl, TExPool>(
 		.for_each(move |hash| {
 			network.propagate_transaction(hash);
 			let status = transaction_pool.status();
-			telemetry!(SUBSTRATE_INFO; "txpool.import";
+			telemetry!(
+				telemetry; SUBSTRATE_INFO; "txpool.import";
 				"ready" => status.ready,
-				"future" => status.future
+				"future" => status.future,
 			);
 			ready(())
 		})
@@ -689,11 +688,9 @@ async fn transaction_notifications<TBl, TExPool>(
 
 fn init_telemetry<TBl: BlockT, TCl: BlockBackend<TBl>>(
 	config: &mut Configuration,
-	telemetry_span: Option<TelemetrySpan>,
 	network: Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
 	client: Arc<TCl>,
-) -> Option<TelemetryConnectionNotifier> {
-	let telemetry_span = telemetry_span?;
+) -> Option<Telemetry> {
 	let endpoints = config.telemetry_endpoints.clone()?;
 	let genesis_hash = client.block_hash(Zero::zero()).ok().flatten().unwrap_or_default();
 	let connection_message = ConnectionMessage {
@@ -712,11 +709,16 @@ fn init_telemetry<TBl: BlockT, TCl: BlockBackend<TBl>>(
 
 	config.telemetry_handle
 		.as_mut()
-		.map(|handle| handle.start_telemetry(
-			telemetry_span,
-			endpoints,
-			connection_message,
-		))
+		.and_then(|handle| {
+			let telemetry = handle.start_telemetry(endpoints, connection_message);
+			if telemetry.is_none() {
+				log::error!(
+					target: "telemetry",
+					"Could not initialize telemetry. The maximum number has been reached.",
+				);
+			}
+			telemetry
+		})
 }
 
 fn gen_handler<TBl, TBackend, TExPool, TRpc, TCl>(

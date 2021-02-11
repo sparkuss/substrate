@@ -89,7 +89,7 @@ use sp_runtime::{
 use sp_api::{ProvideRuntimeApi, NumberFor};
 use parking_lot::Mutex;
 use sp_inherents::{InherentDataProviders, InherentData};
-use sc_telemetry::{telemetry, CONSENSUS_TRACE, CONSENSUS_DEBUG};
+use sc_telemetry::{telemetry, Telemetry, CONSENSUS_TRACE, CONSENSUS_DEBUG};
 use sp_consensus::{
 	BlockImport, Environment, Proposer, BlockCheckParams,
 	ForkChoiceStrategy, BlockImportParams, BlockOrigin, Error as ConsensusError,
@@ -391,6 +391,9 @@ pub struct BabeParams<B: BlockT, C, E, I, SO, SC, CAW, BS> {
 
 	/// Checks if the current native implementation can author with a runtime at a given block.
 	pub can_author_with: CAW,
+
+	/// Telemetry instance.
+	pub telemetry: Option<Telemetry>,
 }
 
 /// Start the babe worker.
@@ -406,6 +409,7 @@ pub fn start_babe<B, C, SC, E, I, SO, CAW, BS, Error>(BabeParams {
 	backoff_authoring_blocks,
 	babe_link,
 	can_author_with,
+	telemetry,
 }: BabeParams<B, C, E, I, SO, SC, CAW, BS>) -> Result<
 	BabeWorker<B>,
 	sp_consensus::Error,
@@ -456,6 +460,7 @@ pub fn start_babe<B, C, SC, E, I, SO, CAW, BS, Error>(BabeParams {
 		inherent_data_providers,
 		babe_link.time_source,
 		can_author_with,
+		telemetry,
 	);
 	Ok(BabeWorker {
 		inner: Box::pin(inner),
@@ -840,6 +845,7 @@ pub struct BabeVerifier<Block: BlockT, Client, SelectChain, CAW> {
 	epoch_changes: SharedEpochChanges<Block, Epoch>,
 	time_source: TimeSource,
 	can_author_with: CAW,
+	telemetry: Option<Telemetry>,
 }
 
 impl<Block, Client, SelectChain, CAW> BabeVerifier<Block, Client, SelectChain, CAW>
@@ -1068,7 +1074,7 @@ where
 
 				trace!(target: "babe", "Checked {:?}; importing.", pre_header);
 				telemetry!(
-					CONSENSUS_TRACE;
+					self.telemetry; CONSENSUS_TRACE;
 					"babe.checked_and_importing";
 					"pre_header" => ?pre_header);
 
@@ -1086,7 +1092,8 @@ where
 			}
 			CheckedHeader::Deferred(a, b) => {
 				debug!(target: "babe", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
-				telemetry!(CONSENSUS_DEBUG; "babe.header_too_far_in_future";
+				telemetry!(
+					self.telemetry; CONSENSUS_DEBUG; "babe.header_too_far_in_future";
 					"hash" => ?hash, "a" => ?a, "b" => ?b
 				);
 				Err(Error::<Block>::TooFarInFuture(hash).into())
@@ -1493,6 +1500,7 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW>(
 	spawner: &impl sp_core::traits::SpawnNamed,
 	registry: Option<&Registry>,
 	can_author_with: CAW,
+	telemetry: Option<Telemetry>,
 ) -> ClientResult<DefaultImportQueue<Block, Client>> where
 	Inner: BlockImport<Block, Error = ConsensusError, Transaction = sp_api::TransactionFor<Client, Block>>
 		+ Send + Sync + 'static,
@@ -1512,6 +1520,7 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, CAW>(
 		epoch_changes: babe_link.epoch_changes,
 		time_source: babe_link.time_source,
 		can_author_with,
+		telemetry,
 	};
 
 	Ok(BasicQueue::new(

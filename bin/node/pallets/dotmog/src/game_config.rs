@@ -36,7 +36,7 @@ impl GameConfig {
 	pub fn new() -> Self {
 		let mut v = Vec::new();
 		for i in 0..GameConfig::PARAM_COUNT {
-			v.push(i);
+			v.push(0);
 		}
 		return GameConfig {
 			parameters: v,

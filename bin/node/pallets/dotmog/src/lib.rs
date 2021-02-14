@@ -106,7 +106,7 @@ decl_storage! {
 	// This name may be updated, but each pallet in the runtime must use a unique name.
 	// ---------------------------------vvvvvvvvvvvvvv
 	trait Store for Module<T: Config> as DotMogModule {
-		
+
 		// Learn more about declaring storage items:
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
 		Something get(fn something): Option<u32>;
@@ -140,7 +140,7 @@ decl_storage! {
 		/// A vec of mogwai auctions accessible by the expiry block number. 
 		Auctions get(fn auctions_expire_at): map hasher(blake2_128_concat) T::BlockNumber => Vec<Auction<T::Hash, BalanceOf<T>, T::BlockNumber, T::AccountId>>;
 		/// Current auction period max limit.       
-		AuctionPeriodLimit get(fn auction_period_limit): T::BlockNumber = 1000.into();
+		AuctionPeriodLimit get(fn auction_period_limit): T::BlockNumber = (1000 as u32).into();
 		
 		/// A map of bids accessible by account id and mogwai hash.
 		Bids get(fn bid_of): map hasher(blake2_128_concat) (T::Hash, T::AccountId) => BalanceOf<T>;
@@ -859,11 +859,13 @@ impl<T: Config> Module<T> {
 	}
 
 	fn calculate_breedtype(block_number: T::BlockNumber) -> BreedType {
+		
 		// old breed type calculations changed on each block
 		//let breed_type = BreedType::from_u32((block_number % 4.into()).saturated_into::<u32>());
 		//return breed_type;
 
-		let modulo80 = (block_number % 80.into()).saturated_into::<u32>();
+		let mod_value : u32 = 80;
+		let modulo80 = (block_number % mod_value.into()).saturated_into::<u32>();
 		if modulo80 < 20 {
 			return BreedType::DomDom;
 		} else if modulo80 < 40 {

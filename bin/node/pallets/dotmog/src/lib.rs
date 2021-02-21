@@ -167,6 +167,9 @@ decl_storage! {
 		/// A vec of game event ids (hash) accessible by the triggering block number.
 		GameEventsAtBlock get(fn game_events_at_block): map hasher(blake2_128_concat) T::BlockNumber => Vec<T::Hash>;	
 
+		/// A vec of game event ids (hash) accessible by the corresponding mogwai.
+		GameEventsOfMogwai get(fn game_events_of_mogwai): map hasher(identity) T::Hash => Vec<T::Hash>;
+
 		/// The nonce used for randomness.
 		Nonce: u64 = 0;
 	}
@@ -232,6 +235,8 @@ decl_error! {
 		MogwaiAlreadyExists,
 		/// The mogwais hash doesn't exist.
 		MogwaiDoesntExists,
+		/// The mogwai has pending game events.
+		MogwaiHasGameEvents,
 		/// The mogwai isn't owned by the sender.
 		MogwaiNotOwned,
 		/// The submitted index is out of range.
@@ -397,8 +402,7 @@ decl_module! {
 
             let sender = ensure_signed(origin)?;
 
-			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
-			
+			let owner = Self::owner_of(mogwai_id).ok_or(Error::<T>::MogwaiDoesntExists)?;
 			ensure!(owner == sender, Error::<T>::MogwaiNotOwned);
 
             Self::transfer_from(sender, to, mogwai_id)?;
@@ -412,11 +416,16 @@ decl_module! {
 
             let sender = ensure_signed(origin)?;
 
-			let owner = Self::owner_of(mogwai_id_1).ok_or("No owner for this mogwai")?;
-			
+			let owner = Self::owner_of(mogwai_id_1).ok_or(Error::<T>::MogwaiDoesntExists)?;
 			ensure!(owner == sender, Error::<T>::MogwaiNotOwned);
+	
+			// make sure that there is no pending game event on the mogwai before sacrificing it.
+			if GameEventsOfMogwai::<T>::contains_key(&mogwai_id_1) {
+				let open_game_events = Self::game_events_of_mogwai(&mogwai_id_1);
+				ensure!(open_game_events.is_empty(), Error::<T>::MogwaiHasGameEvents);
+			}
 
-			// TODO: implement sacrifice ... 
+			// TODO implement sacrifice !!!
 
             Ok(())
 		}
@@ -426,11 +435,10 @@ decl_module! {
 		fn buy_mogwai(origin, mogwai_id: T::Hash, max_price: BalanceOf<T>) -> dispatch::DispatchResult {
 			
 			let sender = ensure_signed(origin)?;
-			
+
 			ensure!(Mogwais::<T>::contains_key(mogwai_id), Error::<T>::MogwaiDoesntExists);
 
-			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
-			
+			let owner = Self::owner_of(mogwai_id).ok_or(Error::<T>::MogwaiDoesntExists)?;
 			ensure!(owner != sender, "You already own this mogwai");
 		
 			let mut mogwai = Self::mogwai(mogwai_id);
@@ -470,12 +478,10 @@ decl_module! {
 
             ensure!(Mogwais::<T>::contains_key(mogwai_id), Error::<T>::MogwaiDoesntExists);
 
-			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
-			
+			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;		
 			ensure!(owner == sender, "You don't own this mogwai");
 
 			let mut mogwai = Self::mogwai(mogwai_id);
-
 			ensure!(mogwai.gen == 0, Error::<T>::MogwaiIncompatibleGeneration);
 
 			let block_number = <frame_system::Module<T>>::block_number();
@@ -508,8 +514,7 @@ decl_module! {
 			ensure!(Mogwais::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiDoesntExists);
 			ensure!(Mogwais::<T>::contains_key(mogwai_id_2), Error::<T>::MogwaiDoesntExists);
 
-			let owner = Self::owner_of(mogwai_id_1).ok_or("No owner for this mogwai")?;
-			
+			let owner = Self::owner_of(mogwai_id_1).ok_or("No owner for this mogwai")?;	
 			ensure!(owner == sender, "You don't own the first mogwai");
 
 			let parents = [Self::mogwai(mogwai_id_1) , Self::mogwai(mogwai_id_2)];
@@ -595,7 +600,6 @@ decl_module! {
 			ensure!(Mogwais::<T>::contains_key(mogwai_id), Error::<T>::MogwaiDoesntExists);
 
 			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
-
             ensure!(owner == sender, "You can't set an auction for a mogwai you don't own");
 
             ensure!(expiry > <frame_system::Module<T>>::block_number(), "The expiry has to be greater than the current block number");
@@ -630,7 +634,6 @@ decl_module! {
 			ensure!(Mogwais::<T>::contains_key(mogwai_id), Error::<T>::MogwaiDoesntExists);
 
 			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
-
             ensure!(owner != sender, "You can't bid for your own mogwai");
 
 			let mut auction = Self::auction_of(mogwai_id).ok_or("No auction for this mogwai")?;
@@ -747,6 +750,11 @@ impl<T: Config> Module<T> {
 		// updated event maps.
 		<GameEventsAtBlock<T>>::mutate(new_game_event.begin, |game_events| game_events.push(event_id.clone()));
 
+		// add the game event for all affected mogwais 
+		for hash in &new_game_event.hashes {
+			<GameEventsOfMogwai<T>>::mutate(hash, |mogwai_game_events| mogwai_game_events.push(event_id.clone()));
+		}
+
 		<GameEvents<T>>::insert(event_id, new_game_event);
 		
 		<AllGameEventsArray<T>>::insert(all_events_count, event_id);
@@ -766,6 +774,12 @@ impl<T: Config> Module<T> {
 	fn remove(from: T::AccountId, mogwai_id: T::Hash) -> dispatch::DispatchResult {
 
 		ensure!(MogwaiOwner::<T>::contains_key(&mogwai_id), Error::<T>::MogwaiDoesntExists);
+		
+		// make sure that there is no pending game event on the mogwai before removing it.
+		if GameEventsOfMogwai::<T>::contains_key(&mogwai_id) {
+			let open_game_events = Self::game_events_of_mogwai(&mogwai_id);
+			ensure!(open_game_events.is_empty(), Error::<T>::MogwaiHasGameEvents);
+		}
 
 		let owned_mogwais_count = Self::owned_mogwais_count(&from);
 		let new_owned_mogwai_count = owned_mogwais_count.checked_sub(1)
@@ -779,6 +793,8 @@ impl<T: Config> Module<T> {
 		<Mogwais<T>>::remove(mogwai_id);
 		<MogwaisBios<T>>::remove(mogwai_id);
 		<MogwaiOwner<T>>::remove(mogwai_id);
+
+		<GameEventsOfMogwai<T>>::remove(mogwai_id);
 					
         let all_mogwai_index = <AllMogwaisIndex<T>>::get(mogwai_id);
         if all_mogwai_index != new_all_mogwais_count {
@@ -930,6 +946,13 @@ impl<T: Config> Module<T> {
 			// clean-up game events
 			<GameEvents<T>>::remove(&game_event.id);
 
+			// remove the game event for all affected mogwais, removing mogwais with pending game events is forbidden
+			// and should be cleared in any function that removes them, like sacrifice and remove.
+			// TODO remove empty entries to avoid storage getting to big.
+			for hash in &game_event.hashes {
+				<GameEventsOfMogwai<T>>::mutate(hash, |mogwai_game_events| mogwai_game_events.retain(|&x| x != game_event.id));
+			}
+
 			let all_events_count = Self::all_game_events_count();
 			let all_count_sub_opt = all_events_count.checked_sub(1);
 			if all_count_sub_opt.is_some() {
@@ -971,6 +994,26 @@ impl<T: Config> Module<T> {
 		}
 	}
 
+	/// TODO: check if it is more optimzed when multiple hatching events are gathered in one event, instead of each in one of it's own.
+	fn execute_event_hatch(game_event: GameEvent<T::Hash, T::BlockNumber, GameEventType>) -> () {
+
+		for mogwai_id in game_event.hashes.iter() {
+
+			if !Mogwais::<T>::contains_key(mogwai_id) || MogwaisBios::<T>::contains_key(mogwai_id) {
+				// if there is no mogwai or it has already a bios we skip this part, as something bad happend
+				continue;
+			}
+
+			let mogwai_struct = Self::mogwai(mogwai_id);
+			let block_hash = <frame_system::Module<T>>::block_hash(mogwai_struct.genesis);
+
+			let mogwai_bio = Self::segment(mogwai_struct, block_hash, game_event.begin);
+
+			<MogwaisBios<T>>::insert(mogwai_id, mogwai_bio);
+		}
+	}
+
+	/// do the segmentation 
 	fn segment(mogwai_struct: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>, block_hash: T::Hash, phase: T::BlockNumber) -> MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> {
 		
 		let mut dna: [u8; 32] = Default::default();
@@ -997,51 +1040,6 @@ impl<T: Config> Module<T> {
 			level: 1,
 			phases: phases,
 			adaptations: Vec::new(),
-		}
-	}
-
-	/// TODO: check if it is more optimzed when multiple hatching events are gathered in one event, instead of each in one of it's own.
-	fn execute_event_hatch(game_event: GameEvent<T::Hash, T::BlockNumber, GameEventType>) -> () {
-
-		for mogwai_id in game_event.hashes.iter() {
-
-			if !Mogwais::<T>::contains_key(mogwai_id) || MogwaisBios::<T>::contains_key(mogwai_id) {
-				// if there is no mogwai or it has already a bios we skip this part, as something bad happend
-				continue;
-			}
-
-			let mogwai_struct = Self::mogwai(mogwai_id);
-			let block_hash = <frame_system::Module<T>>::block_hash(mogwai_struct.genesis);
-
-			// let mut dna: [u8; 32] = Default::default();
-			// let mut blk: [u8; 32] = Default::default();
-
-			// dna.copy_from_slice(&mogwai_struct.dna.as_ref()[0..32]);
-			// blk.copy_from_slice(&block_hash.as_ref()[0..32]);
-
-			// // segmenting the hatched mogwai
-			// let (dna,evo) = Breeding::segmenting(dna,blk);
-
-			// let mut metaxy = Vec::new();
-			// metaxy.push(dna);
-			// metaxy.push(evo);
-
-			// let mut phases = Vec::new();
-			// phases.push(game_event.begin);
-
-			// let mogwai_bio = MogwaiBios {
-			// 	mogwai_id: mogwai_id.clone(),
-			// 	state: 0,
-			// 	metaxy: metaxy,
-			// 	intrinsic: Zero::zero(),
-			// 	level: 1,
-			// 	phases: phases,
-			// 	adaptations: Vec::new(),
-			// };
-
-			let mogwai_bio = Self::segment(mogwai_struct, block_hash, game_event.begin);
-
-			<MogwaisBios<T>>::insert(mogwai_id, mogwai_bio);
 		}
 	}
 }

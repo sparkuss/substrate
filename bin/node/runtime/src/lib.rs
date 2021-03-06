@@ -957,33 +957,33 @@ impl pallet_vesting::Config for Runtime {
 	type WeightInfo = pallet_vesting::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_mmr::Config for Runtime {
-	const INDEXING_PREFIX: &'static [u8] = b"mmr";
-	type Hashing = <Runtime as frame_system::Config>::Hashing;
-	type Hash = <Runtime as frame_system::Config>::Hash;
-	type LeafData = frame_system::Module<Self>;
-	type OnNewRoot = ();
-	type WeightInfo = ();
-}
+//impl pallet_mmr::Config for Runtime {
+//	const INDEXING_PREFIX: &'static [u8] = b"mmr";
+//	type Hashing = <Runtime as frame_system::Config>::Hashing;
+//	type Hash = <Runtime as frame_system::Config>::Hash;
+//	type LeafData = frame_system::Module<Self>;
+//	type OnNewRoot = ();
+//	type WeightInfo = ();
+//}
 
-parameter_types! {
-	pub const LotteryModuleId: ModuleId = ModuleId(*b"py/lotto");
-	pub const MaxCalls: usize = 10;
-	pub const MaxGenerateRandom: u32 = 10;
-}
+//parameter_types! {
+//	pub const LotteryModuleId: ModuleId = ModuleId(*b"py/lotto");
+//	pub const MaxCalls: usize = 10;
+//	pub const MaxGenerateRandom: u32 = 10;
+//}
 
-impl pallet_lottery::Config for Runtime {
-	type ModuleId = LotteryModuleId;
-	type Call = Call;
-	type Event = Event;
-	type Currency = Balances;
-	type Randomness = RandomnessCollectiveFlip;
-	type ManagerOrigin = EnsureRoot<AccountId>;
-	type MaxCalls = MaxCalls;
-	type ValidateCall = Lottery;
-	type MaxGenerateRandom = MaxGenerateRandom;
-	type WeightInfo = pallet_lottery::weights::SubstrateWeight<Runtime>;
-}
+//impl pallet_lottery::Config for Runtime {
+//	type ModuleId = LotteryModuleId;
+//	type Call = Call;
+//	type Event = Event;
+//	type Currency = Balances;
+//	type Randomness = RandomnessCollectiveFlip;
+//	type ManagerOrigin = EnsureRoot<AccountId>;
+//	type MaxCalls = MaxCalls;
+//	type ValidateCall = Lottery;
+//	type MaxGenerateRandom = MaxGenerateRandom;
+//	type WeightInfo = pallet_lottery::weights::SubstrateWeight<Runtime>;
+//}
 
 parameter_types! {
 	pub const AssetDepositBase: Balance = 100 * DOLLARS;
@@ -1020,44 +1020,74 @@ construct_runtime!(
 		NodeBlock = node_primitives::Block,
 		UncheckedExtrinsic = UncheckedExtrinsic
 	{
+		// Basic stuff; balances is uncallable initially.
 		System: frame_system::{Module, Call, Config, Storage, Event<T>},
-		Utility: pallet_utility::{Module, Call, Event},
+		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Module, Call, Storage},
+		Scheduler: pallet_scheduler::{Module, Call, Storage, Event<T>},
+		
+		// Must be before session.
 		Babe: pallet_babe::{Module, Call, Storage, Config, Inherent, ValidateUnsigned},
+		
 		Timestamp: pallet_timestamp::{Module, Call, Storage, Inherent},
-		Authorship: pallet_authorship::{Module, Call, Storage, Inherent},
 		Indices: pallet_indices::{Module, Call, Storage, Config<T>, Event<T>},
 		Balances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 		TransactionPayment: pallet_transaction_payment::{Module, Storage},
+		
+		// Consensus support.
+		Authorship: pallet_authorship::{Module, Call, Storage, Inherent},
 		Staking: pallet_staking::{Module, Call, Config<T>, Storage, Event<T>, ValidateUnsigned},
+		Offences: pallet_offences::{Module, Call, Storage, Event},
+		Historical: pallet_session_historical::{Module},
 		Session: pallet_session::{Module, Call, Storage, Event, Config<T>},
+		Grandpa: pallet_grandpa::{Module, Call, Storage, Config, Event, ValidateUnsigned},
+		ImOnline: pallet_im_online::{Module, Call, Storage, Event<T>, ValidateUnsigned, Config<T>},
+		AuthorityDiscovery: pallet_authority_discovery::{Module, Call, Config},
+		
+		// Governance stuff.
 		Democracy: pallet_democracy::{Module, Call, Storage, Config, Event<T>},
 		Council: pallet_collective::<Instance1>::{Module, Call, Storage, Origin<T>, Event<T>, Config<T>},
 		TechnicalCommittee: pallet_collective::<Instance2>::{Module, Call, Storage, Origin<T>, Event<T>, Config<T>},
 		Elections: pallet_elections_phragmen::{Module, Call, Storage, Event<T>, Config<T>},
 		TechnicalMembership: pallet_membership::<Instance1>::{Module, Call, Storage, Event<T>, Config<T>},
-		Grandpa: pallet_grandpa::{Module, Call, Storage, Config, Event, ValidateUnsigned},
 		Treasury: pallet_treasury::{Module, Call, Storage, Config, Event<T>},
-		Contracts: pallet_contracts::{Module, Call, Config<T>, Storage, Event<T>},
-		Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
-		ImOnline: pallet_im_online::{Module, Call, Storage, Event<T>, ValidateUnsigned, Config<T>},
-		AuthorityDiscovery: pallet_authority_discovery::{Module, Call, Config},
-		Offences: pallet_offences::{Module, Call, Storage, Event},
-		Historical: pallet_session_historical::{Module},
-		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Module, Call, Storage},
+		
+		// Claims. Usable initially.
+		//Claims: claims::{Module, Call, Storage, Event<T>, Config<T>, ValidateUnsigned} = 24,
+		
+		// Vesting. Usable initially, but removed once all vesting is finished.
+		Vesting: pallet_vesting::{Module, Call, Storage, Event<T>, Config<T>},
+
+		// Cunning utilities. Usable initially.
+		Utility: pallet_utility::{Module, Call, Event},
+		
+		// Identity.
 		Identity: pallet_identity::{Module, Call, Storage, Event<T>},
+		
+		// Proxy module.
+		Proxy: pallet_proxy::{Module, Call, Storage, Event<T>},
+		
+		// Multisig dispatch.
+		Multisig: pallet_multisig::{Module, Call, Storage, Event<T>},
+		
+		// Bounties module.
+		Bounties: pallet_bounties::{Module, Call, Storage, Event<T>},
+
+		// Tips module.
+		Tips: pallet_tips::{Module, Call, Storage, Event<T>},
+
+		// Sudo. Usable initially then removed.
+		Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
+		
+		// Dot Mog Pallet, mandatory for a DOTMog universe chain.
+		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>},
+		
+		// Additional pallets ... 
+		Contracts: pallet_contracts::{Module, Call, Config<T>, Storage, Event<T>},
 		Society: pallet_society::{Module, Call, Storage, Event<T>, Config<T>},
 		Recovery: pallet_recovery::{Module, Call, Storage, Event<T>},
-		Vesting: pallet_vesting::{Module, Call, Storage, Event<T>, Config<T>},
-		Scheduler: pallet_scheduler::{Module, Call, Storage, Event<T>},
-		Proxy: pallet_proxy::{Module, Call, Storage, Event<T>},
-		Multisig: pallet_multisig::{Module, Call, Storage, Event<T>},
-		Bounties: pallet_bounties::{Module, Call, Storage, Event<T>},
-		Tips: pallet_tips::{Module, Call, Storage, Event<T>},
 		Assets: pallet_assets::{Module, Call, Storage, Event<T>},
-		Mmr: pallet_mmr::{Module, Storage},
-		Lottery: pallet_lottery::{Module, Call, Storage, Event<T>},
-    	// Include the custom logic from the dotmog pallet in the runtime.
-		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>},
+		//Mmr: pallet_mmr::{Module, Storage},
+		//Lottery: pallet_lottery::{Module, Call, Storage, Event<T>},
   }
 );
 
@@ -1094,19 +1124,19 @@ pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExt
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<Runtime, Block, frame_system::ChainContext<Runtime>, Runtime, AllModules>;
 
-/// MMR helper types.
-mod mmr {
-	use super::Runtime;
-	pub use pallet_mmr::primitives::*;
-
-	pub type Leaf = <
-		<Runtime as pallet_mmr::Config>::LeafData
-		as
-		LeafDataProvider
-	>::LeafData;
-	pub type Hash = <Runtime as pallet_mmr::Config>::Hash;
-	pub type Hashing = <Runtime as pallet_mmr::Config>::Hashing;
-}
+///// MMR helper types.
+//mod mmr {
+//	use super::Runtime;
+//	pub use pallet_mmr::primitives::*;
+//
+//	pub type Leaf = <
+//		<Runtime as pallet_mmr::Config>::LeafData
+//		as
+//		LeafDataProvider
+//	>::LeafData;
+//	pub type Hash = <Runtime as pallet_mmr::Config>::Hash;
+//	pub type Hashing = <Runtime as pallet_mmr::Config>::Hashing;
+//}
 
 impl_runtime_apis! {
 	impl sp_api::Core<Block> for Runtime {
@@ -1302,28 +1332,28 @@ impl_runtime_apis! {
 		}
 	}
 
-	impl pallet_mmr::primitives::MmrApi<
-		Block,
-		mmr::Leaf,
-		mmr::Hash,
-	> for Runtime {
-		fn generate_proof(leaf_index: u64) -> Result<(mmr::Leaf, mmr::Proof<mmr::Hash>), mmr::Error> {
-			Mmr::generate_proof(leaf_index)
-		}
-
-		fn verify_proof(leaf: mmr::Leaf, proof: mmr::Proof<mmr::Hash>) -> Result<(), mmr::Error> {
-			Mmr::verify_leaf(leaf, proof)
-		}
-
-		fn verify_proof_stateless(
-			root: mmr::Hash,
-			leaf: Vec<u8>,
-			proof: mmr::Proof<mmr::Hash>
-		) -> Result<(), mmr::Error> {
-			let node = mmr::DataOrHash::Data(mmr::OpaqueLeaf(leaf));
-			pallet_mmr::verify_leaf_proof::<mmr::Hashing, _>(root, node, proof)
-		}
-	}
+//	impl pallet_mmr::primitives::MmrApi<
+//		Block,
+//		mmr::Leaf,
+//		mmr::Hash,
+//	> for Runtime {
+//		fn generate_proof(leaf_index: u64) -> Result<(mmr::Leaf, mmr::Proof<mmr::Hash>), mmr::Error> {
+//			Mmr::generate_proof(leaf_index)
+//		}
+//
+//		fn verify_proof(leaf: mmr::Leaf, proof: mmr::Proof<mmr::Hash>) -> Result<(), mmr::Error> {
+//			Mmr::verify_leaf(leaf, proof)
+//		}
+//
+//		fn verify_proof_stateless(
+//			root: mmr::Hash,
+//			leaf: Vec<u8>,
+//			proof: mmr::Proof<mmr::Hash>
+//		) -> Result<(), mmr::Error> {
+//			let node = mmr::DataOrHash::Data(mmr::OpaqueLeaf(leaf));
+//			pallet_mmr::verify_leaf_proof::<mmr::Hashing, _>(root, node, proof)
+//		}
+//	}
 
 	impl sp_session::SessionKeys<Block> for Runtime {
 		fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
@@ -1384,8 +1414,8 @@ impl_runtime_apis! {
 			add_benchmark!(params, batches, pallet_identity, Identity);
 			add_benchmark!(params, batches, pallet_im_online, ImOnline);
 			add_benchmark!(params, batches, pallet_indices, Indices);
-			add_benchmark!(params, batches, pallet_lottery, Lottery);
-			add_benchmark!(params, batches, pallet_mmr, Mmr);
+			//add_benchmark!(params, batches, pallet_lottery, Lottery);
+			//add_benchmark!(params, batches, pallet_mmr, Mmr);
 			add_benchmark!(params, batches, pallet_multisig, Multisig);
 			add_benchmark!(params, batches, pallet_offences, OffencesBench::<Runtime>);
 			add_benchmark!(params, batches, pallet_proxy, Proxy);

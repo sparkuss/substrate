@@ -28,8 +28,8 @@ mod mock;
 mod tests;
 
 /// Implementations of some helper traits passed into runtime modules as associated types.
-pub mod genetic;
-use genetic::{Breeding, BreedType};
+pub mod general;
+use general::{Breeding, BreedType, Generation, RarityType};
 
 pub mod game_event;
 use game_event::{GameEventType};
@@ -42,12 +42,13 @@ const MAX_EVENTS_PER_BLOCK: usize = 10;
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
-pub struct MogwaiStruct<Hash, BlockNumber, Balance> {
+pub struct MogwaiStruct<Hash, BlockNumber, Balance, RarityType> {
 	id: Hash,
 	dna: Hash,
 	genesis: BlockNumber,
 	price: Balance,
-	gen: u64,
+	gen: u32,
+	rarity: RarityType,
 }
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
@@ -59,8 +60,14 @@ pub struct MogwaiBios<Hash, BlockNumber, Balance> {
 	intrinsic: Balance,
 	level: u8,
 	phases: Vec<BlockNumber>,
-	adaptations: Vec<Hash>
+	adaptations: Vec<Hash>,
 }
+
+//#[derive(Encode, Decode, Default, Clone, PartialEq)]
+//#[cfg_attr(feature = "std", derive(Debug))]
+//pub struct MogwaiArt<Hash, BlockNumber, Balance> {
+//	mogwai_id: Hash,
+//}
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -92,11 +99,14 @@ pub trait Config: frame_system::Config {
 	/// The overarching event type.
 	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
 
-	/// The currency trait.
+	/// The currency mechanism.
 	type Currency: ReservableCurrency<Self::AccountId>;
 
 	/// Something that provides randomness in the runtime.
 	type Randomness: Randomness<Self::Hash>;
+
+	// Weight information for extrinsics in this pallet.
+	//type WeightInfo: WeightInfo;
 }
 
 // The pallet's runtime storage items.
@@ -111,11 +121,14 @@ decl_storage! {
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
 		Something get(fn something): Option<u32>;
 
+		// The `AccountId` of the dot mog sudoer key.
+		//Key get(fn key) config(): T::AccountId;
+
 		/// A map of the current configuration of an account.
 		AccountConfig get(fn account_config): map hasher(blake2_128_concat) T::AccountId => Option<Vec<u8>>;
 
 		/// A map of mogwais accessible by the mogwai hash.
-		Mogwais get(fn mogwai): map hasher(identity) T::Hash => MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>;
+		Mogwais get(fn mogwai): map hasher(identity) T::Hash => MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>, RarityType>;
 		/// A map of mogwai bios accessible by the mogwai hash.
 		MogwaisBios get(fn mogwai_bios): map hasher(identity) T::Hash => MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>>;
 		/// A map of mogwai owners accessible by the mogwai hash.
@@ -189,6 +202,9 @@ decl_event!(
 		/// parameters. [something, who]
 		SomethingStored(u32, AccountId),
 
+		// A dot mog sudo just took place.
+		//DotMogDid(DispatchResult),
+
 		// A account configuration has been changed.
 		AccountConfigChanged(AccountId, Vec<u8>),
 
@@ -227,24 +243,37 @@ decl_event!(
 // Errors inform users that something went wrong.
 decl_error! {
 	pub enum Error for Module<T: Config> {
+
 		/// Error names should be descriptive.
 		NoneValue,
+
+		// Sender must be the dot mog sudo account
+		//RequireDotMogSudo,
+
 		/// A Storage overflow, has occured make sure to validate first.
 		StorageOverflow,
+
 		/// The mogwai id (hash) already exists.
 		MogwaiAlreadyExists,
+
 		/// The mogwais hash doesn't exist.
 		MogwaiDoesntExists,
+
 		/// The mogwai has pending game events.
 		MogwaiHasGameEvents,
+
 		/// The mogwai isn't owned by the sender.
 		MogwaiNotOwned,
+
 		/// The submitted index is out of range.
 		ConfigIndexOutOfRange,
+
 		/// Incompatible generation
 		MogwaiIncompatibleGeneration,
+
 		// Mogwai doesn't have a bios code.
 		MogwaiHasNoBios,
+
 		/// The game event id (hash) already exists.
 		GameEventAlreadyExists,
 	}
@@ -266,7 +295,7 @@ decl_module! {
 		/// An example dispatchable that takes a singles value as a parameter, writes the value to
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		pub fn do_something(origin, something: u32) -> dispatch::DispatchResult {
+		fn do_something(origin, something: u32) -> dispatch::DispatchResult {
 			// Check that the extrinsic was signed and get the signer.
 			// This function will return an error if the extrinsic is not signed.
 			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
@@ -283,7 +312,7 @@ decl_module! {
 
 		/// An example dispatchable that may throw a custom error.
 		#[weight = 10_000 + T::DbWeight::get().reads_writes(1,1)]
-		pub fn cause_error(origin) -> dispatch::DispatchResult {
+		fn cause_error(origin) -> dispatch::DispatchResult {
 			let _who = ensure_signed(origin)?;
 
 			// Read a value from storage.
@@ -301,7 +330,7 @@ decl_module! {
 		}
 
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		pub fn update_config(origin, index: u8, value_opt: Option<u8>) -> dispatch::DispatchResult {
+		fn update_config(origin, index: u8, value_opt: Option<u8>) -> dispatch::DispatchResult {
 
 			let sender = ensure_signed(origin)?;
 
@@ -374,6 +403,7 @@ decl_module! {
 							genesis: block_number,
 							price: Zero::zero(),
 							gen: 0, // straight created mogwais are hybrid mogwais of gen 0
+							rarity: RarityType::Minor,
 			};
 
 			Self::mint(sender, random_hash, new_mogwai, None)?;
@@ -523,10 +553,10 @@ decl_module! {
 			ensure!(parents[0].gen == 0 ||  MogwaisBios::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiHasNoBios);
 			ensure!(parents[1].gen == 0 ||  MogwaisBios::<T>::contains_key(mogwai_id_2), Error::<T>::MogwaiHasNoBios);
 
-			let next_gen = parents[0].gen + parents[1].gen + 1;
-
 			let mogwai_id = Self::generate_random_hash(b"breed_mogwai", sender.clone());
 			let event_id = Self::generate_random_hash(b"breed_event", sender.clone());
+
+			let (rarity, next_gen) = Generation::next_gen(parents[0].gen, parents[0].rarity, parents[1].gen, parents[1].rarity, mogwai_id.as_ref());
 
 			let block_number = <frame_system::Module<T>>::block_number();			
 			let breed_type : BreedType = Self::calculate_breedtype(block_number);
@@ -574,6 +604,7 @@ decl_module! {
 				genesis: block_number,
 				price: Zero::zero(),
 				gen: next_gen,
+				rarity: rarity,
 			};
 
 			let game_event = GameEvent {
@@ -694,7 +725,7 @@ impl<T: Config> Module<T> {
 		nonce.encode()
 	}
 
-	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>, game_event_opt: Option<GameEvent<T::Hash, T::BlockNumber, GameEventType>>) -> dispatch::DispatchResult {
+	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>, RarityType>, game_event_opt: Option<GameEvent<T::Hash, T::BlockNumber, GameEventType>>) -> dispatch::DispatchResult {
 
 		ensure!(!MogwaiOwner::<T>::contains_key(&mogwai_id), Error::<T>::MogwaiAlreadyExists);
 
@@ -867,6 +898,7 @@ impl<T: Config> Module<T> {
         Ok(())
 	}
 
+	///
 	fn generate_random_hash(phrase: &[u8], sender: T::AccountId) -> T::Hash {
 		let seed = T::Randomness::random(phrase);
 		let seed = <[u8; 32]>::decode(&mut TrailingZeroInput::new(seed.as_ref()))
@@ -874,6 +906,7 @@ impl<T: Config> Module<T> {
 		return (seed, &sender, Self::encode_and_update_nonce()).using_encoded(T::Hashing::hash);
 	}
 
+	///
 	fn calculate_breedtype(block_number: T::BlockNumber) -> BreedType {
 		
 		// old breed type calculations changed on each block
@@ -1014,7 +1047,7 @@ impl<T: Config> Module<T> {
 	}
 
 	/// do the segmentation 
-	fn segment(mogwai_struct: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>>, block_hash: T::Hash, phase: T::BlockNumber) -> MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> {
+	fn segment(mogwai_struct: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>, RarityType>, block_hash: T::Hash, phase: T::BlockNumber) -> MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> {
 		
 		let mut dna: [u8; 32] = Default::default();
 		let mut blk: [u8; 32] = Default::default();

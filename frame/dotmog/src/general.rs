@@ -20,17 +20,29 @@ pub enum BreedType {
 	RezRez = 3,
 }
 
-//impl BreedType {
-//    fn from_u32(value: u32) -> BreedType {
-//        match value {
-//            0 => BreedType::DomDom,
-//            1 => BreedType::DomRez,
-//			2 => BreedType::RezDom,
-//			3 => BreedType::RezRez,
-//            _ => panic!("Unknown value: {}", value),
-//        }
-//    }
-//}
+#[derive(Encode, Decode, Copy, Clone, PartialEq)]
+pub enum RarityType {
+	Minor = 0,
+	Normal = 1,
+	Rare = 2,
+	Epic = 3,
+    Legendary = 4,
+}
+
+impl Default for RarityType { fn default() -> Self { Self::Minor }}
+
+impl RarityType { 
+    pub fn from_u32(value: u32) -> RarityType {
+        match value {
+            0 => RarityType::Minor,
+            1 => RarityType::Normal,
+			2 => RarityType::Rare,
+			3 => RarityType::Epic,
+            4 => RarityType::Legendary,
+            _ => RarityType::Minor,
+        }
+    }
+}
 
 pub struct Breeding;
 
@@ -73,6 +85,7 @@ impl Breeding {
 		}
 		return final_dna;
 	}
+
     pub fn segmenting(gen: [u8;32], blk: [u8;32]) -> ([u8;16],[u8;16]) {
         
 		let a_sec = &gen[0 .. 16];
@@ -207,22 +220,110 @@ impl Breeding {
     }
 }
 
+pub struct Generation { }
+
+impl Generation {
+
+    pub fn next_gen(gen1: u32, rar1: RarityType, gen2: u32, rar2: RarityType, random_hash: &[u8]) -> (RarityType,u32) {
+        
+        let mut result: u32 = 1;
+        
+        let mut rarity1:u32 = 0;
+        let mut rarity2:u32 = 0;
+
+        let mut rar11 = rar1 as u32;
+        let mut rar22 = rar2 as u32;
+
+        if rar11 > 0 {
+            rar11 -= 1;
+        }
+
+        if rar22 > 0 {
+            rar22 -= 1;
+        }
+
+        let base_rar = (rar11 + rar22) / 2;
+
+        if gen1 > 0 && gen1 < 17 && gen2 > 0 && gen2 < 17 && random_hash.len() == 32 {
+            
+            let rng_gen11 = random_hash[1] as u32 + random_hash[2] as u32;
+            let rng_gen12 = random_hash[3] as u32 + random_hash[4] as u32;
+            let rng_gen13 = random_hash[5] as u32 + random_hash[6] as u32;
+
+            let rng_gen21 = random_hash[7] as u32 + random_hash[8] as u32;
+            let rng_gen22 = random_hash[9] as u32 + random_hash[10] as u32;
+            let rng_gen23 = random_hash[11] as u32 + random_hash[12] as u32;
+
+            let mut gen1pow2 = gen1 * 2;
+            if gen1pow2 >=  (rar11 * 2)
+            {
+                gen1pow2 -= rar11; 
+            }
+
+            let mut gen2pow2 = gen2 * 2; 
+            if gen2pow2 >=  (rar22 * 2)
+            {
+                gen2pow2 -= rar22; 
+            }
+
+            let mut base_gen1 = gen1.clone();
+            if (rng_gen11 % gen1pow2) == 0 {
+                base_gen1 += 1;
+                rarity1 = 1;
+                if (rng_gen12 % gen1pow2) < (base_gen1 / 2) {
+                    base_gen1 += 1;
+                    rarity1 = 2;
+                    if (rng_gen13 % gen1pow2) < (base_gen1 / 2) {
+                        base_gen1 += 1;
+                        rarity1 = 3;
+                    } 
+                } 
+            } 
+            else if (rng_gen13 % gen1pow2) == 0 {
+                base_gen1 -= 1;
+            }
+
+            let mut base_gen2 = gen2.clone();
+            if (rng_gen21 % gen2pow2) == 0 {
+                base_gen2 += 1;
+                rarity2 = 1;
+                if (rng_gen22 % gen2pow2) < (base_gen2 / 2) {
+                    base_gen2 += 1;
+                    rarity2 = 2;
+                    if (rng_gen23 % gen2pow2) < (base_gen1 / 2) {
+                        base_gen2 += 1;
+                        rarity2 = 3;
+                    } 
+                }
+            } 
+            else if (rng_gen23 % gen2pow2) == 0 {
+                base_gen2 -= 1;
+            }
+            
+            result = (base_gen1 + base_gen2 + base_rar) / 2;
+
+            if result > 16 {
+                result = 16;
+            }
+            else if result < 1 {
+                result = 1;
+            }
+        }
+
+        let rarity = RarityType::from_u32(((rarity1 + rarity2 + ((rar1 as u32 + rar2 as u32) / 2)) / 2) % 5);
+
+        (rarity, result)
+    }
+}
+
 struct Binary { }
 
 impl Binary {
+
     pub fn get_bit_at(input: u8, n: u8) -> bool {
         input & (1 << n) != 0
     }
- //   pub fn bit_twiddling(original: u8, bit: u8) {
- //       let mask = 1 << bit;
- //       println!(
- //           "Original: {:#010b}, Set: {:#010b}, Cleared: {:#010b}, Toggled: {:#010b}",
- //           original,
- //           original |  mask,
- //           original & !mask,
- //           original ^  mask
- //       );
- //   }
+
     pub fn copy_bits(mut old: u8, mut new: u8, side: usize) -> u8 {
         if side == 0 {
             new = new & 0xF0;
@@ -232,6 +333,7 @@ impl Binary {
         old |= new;
         old
     }
+
     pub fn add_one(mut old: u8, side: usize) -> u8{
         let mut new = old.clone();
         if side == 0 {
@@ -254,6 +356,7 @@ impl Binary {
         new |= old;
         new
     }
+
     pub fn sub_one(mut old: u8, side: usize) -> u8{
         let mut new = old.clone();
         if side == 0 {

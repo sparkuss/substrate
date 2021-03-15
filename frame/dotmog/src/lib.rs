@@ -191,15 +191,15 @@ decl_storage! {
 		/// The nonce used for randomness.
 		Nonce: u64 = 0;
 	}
-//	add_extra_genesis {
-//		build(|_config| {
-//			let founder = hex![
-//				// 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
-//				"9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
-//			].into();
-//			<Key<T>>::put(founder);
-//		})
-//	}
+	add_extra_genesis {
+		build(|_config| {
+			let founder = hex![
+				// 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
+				"9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
+			].into();
+			<Key<T>>::put(founder);
+		})
+	}
 }
 
 // Pallets use events to inform users when important changes are made.

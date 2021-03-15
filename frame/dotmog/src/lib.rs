@@ -15,11 +15,12 @@
 use frame_support::{
 	decl_module, decl_error, decl_event, decl_storage, ensure, codec::{Encode, Decode}, dispatch, 
 	traits::{
-		Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement::AllowDeath
+		Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement, WithdrawReasons, OnUnbalanced
 	}};
 use frame_system::{ensure_signed};
 use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
 use sp_std::vec::{Vec};
+use sp_std::prelude::*;
 
 #[cfg(test)]
 mod mock;
@@ -29,7 +30,7 @@ mod tests;
 
 /// Implementations of some helper traits passed into runtime modules as associated types.
 pub mod general;
-use general::{Breeding, BreedType, Generation, RarityType};
+use general::{Pricing, Breeding, BreedType, Generation, RarityType};
 
 pub mod game_event;
 use game_event::{GameEventType};
@@ -92,6 +93,7 @@ pub struct Auction<Hash, Balance, BlockNumber, AccountId> {
 }
 
 type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+type NegativeImbalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance;
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Config: frame_system::Config {
@@ -104,6 +106,9 @@ pub trait Config: frame_system::Config {
 
 	/// Something that provides randomness in the runtime.
 	type Randomness: Randomness<Self::Hash>;
+
+	/// Handler for price payments.
+	type PricePayment: OnUnbalanced<NegativeImbalanceOf<Self>>;
 
 	// Weight information for extrinsics in this pallet.
 	//type WeightInfo: WeightInfo;
@@ -122,7 +127,7 @@ decl_storage! {
 		Something get(fn something): Option<u32>;
 
 		// The `AccountId` of the dot mog sudoer key.
-		//Key get(fn key) config(): T::AccountId;
+		Key get(fn key): T::AccountId;
 
 		/// A map of the current configuration of an account.
 		AccountConfig get(fn account_config): map hasher(blake2_128_concat) T::AccountId => Option<Vec<u8>>;
@@ -186,6 +191,15 @@ decl_storage! {
 		/// The nonce used for randomness.
 		Nonce: u64 = 0;
 	}
+//	add_extra_genesis {
+//		build(|_config| {
+//			let founder = hex![
+//				// 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
+//				"9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
+//			].into();
+//			<Key<T>>::put(founder);
+//		})
+//	}
 }
 
 // Pallets use events to inform users when important changes are made.
@@ -479,7 +493,7 @@ decl_module! {
 		
 			ensure!(mogwai_price <= max_price, "You can't buy this mogwai, price exceeds your max price limit");
 
-			T::Currency::transfer(&sender, &owner, mogwai_price, AllowDeath)?;
+			T::Currency::transfer(&sender, &owner, mogwai_price, ExistenceRequirement::AllowDeath)?;
 
 			// Transfer the mogwai using `transfer_from()` including a proof of why it cannot fail
 			Self::transfer_from(owner.clone(), sender.clone(), mogwai_id)
@@ -568,9 +582,18 @@ decl_module! {
 				dy.copy_from_slice(&parents[1].dna.as_ref()[16..32]);
 			} else {
 				let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
-				let mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
+				let mut mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
 				dx = mogwai_bios_1.metaxy[0];
 				dy = mogwai_bios_2.metaxy[0];
+
+				// add pairing price to mogwai intrinsic value TODO
+				let mut pairing_price = Pricing::pairing(parents[0].rarity, parents[1].rarity).into();
+				pairing_price *= (1000000000 as u32).into(); // get real price
+				if let Ok(imbalance) = T::Currency::withdraw(&sender, pairing_price, WithdrawReasons::TIP, ExistenceRequirement::KeepAlive) {
+					T::PricePayment::on_unbalanced(imbalance);
+					mogwai_bios_2.intrinsic += pairing_price;
+					<MogwaisBios<T>>::insert(mogwai_id_2, mogwai_bios_2);
+				}
 			}
 
 			let final_dna : [u8;32] = Breeding::pairing(breed_type, dx, dy);	
@@ -938,12 +961,12 @@ impl<T: Config> Module<T> {
 			{
 				<MogwaiAuction<T>>::remove(auction.mogwai_id);
 				let _ = T::Currency::unreserve(&auction.high_bidder, auction.high_bid);		
-				let _currency_transfer = T::Currency::transfer(&auction.high_bidder, &auction.mogwai_owner, auction.high_bid, AllowDeath);
+				let _currency_transfer = T::Currency::transfer(&auction.high_bidder, &auction.mogwai_owner, auction.high_bid, ExistenceRequirement::AllowDeath);
 				match _currency_transfer {
 					Err(_e) => continue,
 					Ok(_v) => {
-						let _kitty_transfer = Self::transfer_from(auction.mogwai_owner.clone(), auction.high_bidder.clone(), auction.mogwai_id);
-						match _kitty_transfer {
+						let _mogwai_transfer = Self::transfer_from(auction.mogwai_owner.clone(), auction.high_bidder.clone(), auction.mogwai_id);
+						match _mogwai_transfer {
 							Err(_e) => continue,
 							Ok(_v) => {
 								Self::deposit_event(RawEvent::AuctionFinalized(auction.mogwai_id, auction.high_bid, auction.expiry));

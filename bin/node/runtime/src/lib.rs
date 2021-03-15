@@ -1012,6 +1012,7 @@ impl pallet_dotmog::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type Randomness = RandomnessCollectiveFlip;
+	type PricePayment = ();
 }
 
 construct_runtime!(
@@ -1079,7 +1080,7 @@ construct_runtime!(
 		Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
 		
 		// Dot Mog Pallet, mandatory for a DOTMog universe chain.
-		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>},
+		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>} //, Config},
 		
 		// Additional pallets ... 
 		Contracts: pallet_contracts::{Module, Call, Config<T>, Storage, Event<T>},

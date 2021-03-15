@@ -44,6 +44,27 @@ impl RarityType {
     }
 }
 
+pub struct Pricing;
+impl Pricing {
+    pub fn pairing(rarity1: RarityType, rarity2: RarityType) -> u32 {
+        let price:u32;
+        match rarity1 as u32 + rarity2 as u32 {
+            0 => price =    1000,
+            1 => price =   10000,
+			2 => price =   20000,
+			3 => price =   30000,
+            4 => price =   40000,
+            5 => price =   50000,
+			6 => price =  100000,
+            7 => price =  150000,
+            8 => price =  200000,
+            _ => price = 1000000,
+         }
+
+        price
+    }
+}
+
 pub struct Breeding;
 
 impl Breeding {

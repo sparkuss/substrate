@@ -155,7 +155,7 @@ fn testnet_genesis(
 		}),
 		template: Some(TemplateModuleConfig {
 			// Assign network admin rights.
-			key: root_key,
+			sudokey: root_key,
 		}),
 	}
 }

@@ -1080,7 +1080,7 @@ construct_runtime!(
 		Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
 		
 		// Dot Mog Pallet, mandatory for a DOTMog universe chain.
-		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>, Config},
+		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>}, // Config},
 		
 		// Additional pallets ... 
 		Contracts: pallet_contracts::{Module, Call, Config<T>, Storage, Event<T>},

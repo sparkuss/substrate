@@ -36,32 +36,6 @@ pub mod pallet {
 	// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
 	pub type Something<T> = StorageValue<_, u32>;
 
-	#[pallet::storage]
-	#[pallet::getter(fn key)]
-	pub type Key<T> = StorageValue<_, T::AccountId, OptionQuery>;
-
-	#[pallet::genesis_config]
-	pub struct GenesisConfig<T: Config<I>, I: 'static = ()> {
-		pub sudokey: Option<T::AccountId>,
-	}
-
-	impl<T: Config<I>, I: 'static> Default for GenesisConfig<T, I> {
-		fn default() -> Self {
-			GenesisConfig {
-				sudokey: Default::default(),
-			}
-		}
-	}
-
-	#[pallet::genesis_build]
-	impl<T: Config<I>, I: 'static> GenesisBuild<T, I> for GenesisConfig<T, I> {
-		fn build(&self) {
-			if let Some(sudokey) = self.key.as_ref() {
-				<Key<T, I>>::put(sudokey);
-			}
-		}
-	}
-
 	// Pallets use events to inform users when important changes are made.
 	// https://substrate.dev/docs/en/knowledgebase/runtime/events
 	#[pallet::event]

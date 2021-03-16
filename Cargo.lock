@@ -4661,7 +4661,9 @@ version = "3.0.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "node-primitives",
  "parity-scale-codec",
+ "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",

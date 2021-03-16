@@ -126,8 +126,8 @@ decl_storage! {
 		// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
 		Something get(fn something): Option<u32>;
 
-		// The `AccountId` of the dot mog sudoer key.
-		Key get(fn key): T::AccountId;
+		/// The `AccountId` of the dot mog founder.
+		Key get(fn key) config(): T::AccountId;
 
 		/// A map of the current configuration of an account.
 		AccountConfig get(fn account_config): map hasher(blake2_128_concat) T::AccountId => Option<Vec<u8>>;
@@ -191,15 +191,15 @@ decl_storage! {
 		/// The nonce used for randomness.
 		Nonce: u64 = 0;
 	}
-	add_extra_genesis {
-		build(|_config| {
-			let founder = hex![
-				// 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
-				"9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
-			].into();
-			<Key<T>>::put(founder);
-		})
-	}
+//	add_extra_genesis {
+//		build(|_config| {
+//			let founder = hex![
+//				// 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
+//				"9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
+//			].into();
+//			<Key<T>>::put(founder);
+//		})
+//	}
 }
 
 // Pallets use events to inform users when important changes are made.
@@ -582,18 +582,13 @@ decl_module! {
 				dy.copy_from_slice(&parents[1].dna.as_ref()[16..32]);
 			} else {
 				let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
-				let mut mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
+				let mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
 				dx = mogwai_bios_1.metaxy[0];
 				dy = mogwai_bios_2.metaxy[0];
 
 				// add pairing price to mogwai intrinsic value TODO
-				let mut pairing_price = Pricing::pairing(parents[0].rarity, parents[1].rarity).into();
-				pairing_price *= (1000000000 as u32).into(); // get real price
-				if let Ok(imbalance) = T::Currency::withdraw(&sender, pairing_price, WithdrawReasons::TIP, ExistenceRequirement::KeepAlive) {
-					T::PricePayment::on_unbalanced(imbalance);
-					mogwai_bios_2.intrinsic += pairing_price;
-					<MogwaisBios<T>>::insert(mogwai_id_2, mogwai_bios_2);
-				}
+				let pairing_price:BalanceOf<T> = Pricing::pairing(parents[0].rarity, parents[1].rarity).saturated_into();
+				Self::tip_mogwai(sender.clone(), pairing_price, mogwai_id_2, mogwai_bios_2)?;
 			}
 
 			let final_dna : [u8;32] = Breeding::pairing(breed_type, dx, dy);	
@@ -746,6 +741,22 @@ impl<T: Config> Module<T> {
 		let nonce = Nonce::get();
 		Nonce::put(nonce.wrapping_add(1));
 		nonce.encode()
+	}
+
+	/// tiping mogwai
+	fn tip_mogwai(who: T::AccountId, amount: BalanceOf<T>, mogwai_id: T::Hash, mut mogwai_bios:  MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> ) -> dispatch::DispatchResult {
+		
+		let _ =  T::Currency::withdraw(
+			&who,
+			amount,
+			WithdrawReasons::TIP, 
+			ExistenceRequirement::KeepAlive
+		)?;
+	  
+		mogwai_bios.intrinsic += amount; // TODO check overflow
+		<MogwaisBios<T>>::insert(mogwai_id, mogwai_bios);
+
+		Ok(())
 	}
 
 	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>, RarityType>, game_event_opt: Option<GameEvent<T::Hash, T::BlockNumber, GameEventType>>) -> dispatch::DispatchResult {

@@ -25,7 +25,7 @@ use node_runtime::{
 	AuthorityDiscoveryConfig, BabeConfig, BalancesConfig, ContractsConfig, CouncilConfig,
 	DemocracyConfig,GrandpaConfig, ImOnlineConfig, SessionConfig, SessionKeys, StakerStatus,
 	StakingConfig, ElectionsConfig, IndicesConfig, SocietyConfig, SudoConfig, SystemConfig,
-	TechnicalCommitteeConfig, wasm_binary_unwrap,
+	TechnicalCommitteeConfig, DotMogModuleConfig, wasm_binary_unwrap, 
 };
 use node_runtime::Block;
 use node_runtime::constants::currency::*;
@@ -301,7 +301,7 @@ pub fn testnet_genesis(
 			},
 		}),
 		pallet_sudo: Some(SudoConfig {
-			key: root_key,
+			key: root_key.clone(),
 		}),
 		pallet_babe: Some(BabeConfig {
 			authorities: vec![],
@@ -326,7 +326,9 @@ pub fn testnet_genesis(
 			max_members: 999,
 		}),
 		pallet_vesting: Some(Default::default()),
-		pallet_dotmog: Some(Default::default()),
+		pallet_dotmog: Some(DotMogModuleConfig {
+			key: root_key,
+		}),
 	}
 }
 

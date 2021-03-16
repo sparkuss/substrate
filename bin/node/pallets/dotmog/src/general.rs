@@ -11,6 +11,7 @@
 // GNU Affero General Public License for more details.
 
 use frame_support::{codec::{Encode, Decode}};
+use node_primitives::Balance;
 
 #[derive(Encode, Decode, Clone, PartialEq)]
 pub enum BreedType {
@@ -44,21 +45,24 @@ impl RarityType {
     }
 }
 
+pub const MILLIMOGS: Balance = 1_000_000_000;
+pub const DMOGS: Balance = 1_000 * MILLIMOGS;
+
 pub struct Pricing;
 impl Pricing {
-    pub fn pairing(rarity1: RarityType, rarity2: RarityType) -> u32 {
-        let price:u32;
+    pub fn pairing(rarity1: RarityType, rarity2: RarityType) -> Balance {
+        let price:Balance;
         match rarity1 as u32 + rarity2 as u32 {
-            0 => price =    1000,
-            1 => price =   10000,
-			2 => price =   20000,
-			3 => price =   30000,
-            4 => price =   40000,
-            5 => price =   50000,
-			6 => price =  100000,
-            7 => price =  150000,
-            8 => price =  200000,
-            _ => price = 1000000,
+            0 => price =    1 * MILLIMOGS,
+            1 => price =   10 * MILLIMOGS,
+			2 => price =   20 * MILLIMOGS,
+			3 => price =   30 * MILLIMOGS,
+            4 => price =   40 * MILLIMOGS,
+            5 => price =   50 * MILLIMOGS,
+			6 => price =  100 * MILLIMOGS,
+            7 => price =  150 * MILLIMOGS,
+            8 => price =  200 * MILLIMOGS,
+            _ => price = 1000 * MILLIMOGS,
          }
 
         price

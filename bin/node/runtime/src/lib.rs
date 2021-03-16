@@ -1007,8 +1007,13 @@ impl pallet_assets::Config for Runtime {
 	type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+	pub const DotMogModuleId: ModuleId = ModuleId(*b"py/dtmog");
+}
+
 /// Configure the pallet dotmog in pallets/dotmog.
 impl pallet_dotmog::Config for Runtime {
+	type ModuleId = DotMogModuleId;
 	type Event = Event;
 	type Currency = Balances;
 	type Randomness = RandomnessCollectiveFlip;

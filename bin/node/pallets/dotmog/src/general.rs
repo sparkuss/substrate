@@ -48,8 +48,25 @@ impl RarityType {
 pub const MILLIMOGS: Balance = 1_000_000_000;
 pub const DMOGS: Balance = 1_000 * MILLIMOGS;
 
+#[derive(Encode, Decode, Copy, Clone, PartialEq)]
+pub enum FeeType {
+	Default = 0,
+    Remove = 1,
+}
+
+impl Default for FeeType { fn default() -> Self { Self::Default }}
+
 pub struct Pricing;
 impl Pricing {
+    pub fn fee_price(fee: FeeType) -> Balance {
+        let price:Balance;
+        match fee {
+            FeeType::Default => price =    1 * MILLIMOGS,
+            FeeType::Remove  => price =   50 * MILLIMOGS,
+        }
+
+        price
+    }
     pub fn pairing(rarity1: RarityType, rarity2: RarityType) -> Balance {
         let price:Balance;
         match rarity1 as u32 + rarity2 as u32 {

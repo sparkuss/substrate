@@ -18,7 +18,7 @@ use frame_support::{
 		Get, Randomness, Currency, ReservableCurrency, ExistenceRequirement, WithdrawReasons, OnUnbalanced
 	}};
 use frame_system::{ensure_signed};
-use sp_runtime::{SaturatedConversion, traits::{Hash, TrailingZeroInput, Zero}};
+use sp_runtime::{SaturatedConversion, ModuleId, traits::{Hash, TrailingZeroInput, Zero, AccountIdConversion}};
 use sp_std::vec::{Vec};
 use sp_std::prelude::*;
 
@@ -30,7 +30,7 @@ mod tests;
 
 /// Implementations of some helper traits passed into runtime modules as associated types.
 pub mod general;
-use general::{Pricing, Breeding, BreedType, Generation, RarityType};
+use general::{Pricing, Breeding, BreedType, Generation, RarityType, FeeType};
 
 pub mod game_event;
 use game_event::{GameEventType};
@@ -98,6 +98,9 @@ type NegativeImbalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_s
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Config: frame_system::Config {
 	
+	/// The dotmog's module id, is used for deriving its mogwai account ID's.
+	type ModuleId: Get<ModuleId>;
+
 	/// The overarching event type.
 	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
 
@@ -191,15 +194,6 @@ decl_storage! {
 		/// The nonce used for randomness.
 		Nonce: u64 = 0;
 	}
-//	add_extra_genesis {
-//		build(|_config| {
-//			let founder = hex![
-//				// 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
-//				"9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
-//			].into();
-//			<Key<T>>::put(founder);
-//		})
-//	}
 }
 
 // Pallets use events to inform users when important changes are made.
@@ -300,6 +294,8 @@ decl_module! {
 	pub struct Module<T: Config> for enum Call where origin: T::Origin {
 		// Errors must be initialized if they are used by the pallet.
 		type Error = Error<T>;
+
+		const ModuleId: ModuleId = T::ModuleId::get();
 
 		//type BreedType = BreedType;
 
@@ -431,6 +427,8 @@ decl_module! {
 
             let sender = ensure_signed(origin)?;
 
+			ensure!(sender == Self::key(), "only the dot mog founder can remove mogwais.");
+
 			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
 			
 			ensure!(owner == sender, "You don't own this mogwai");
@@ -456,7 +454,7 @@ decl_module! {
 		
 		/// Sacrifice mogwai to an other mogwai.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		fn sacrifice(origin, mogwai_id_1: T::Hash, mogwai_id_2: T::Hash) -> dispatch::DispatchResult {
+		fn sacrifice(origin, mogwai_id_1: T::Hash) -> dispatch::DispatchResult {
 
             let sender = ensure_signed(origin)?;
 
@@ -469,7 +467,17 @@ decl_module! {
 				ensure!(open_game_events.is_empty(), Error::<T>::MogwaiHasGameEvents);
 			}
 
-			// TODO implement sacrifice !!!
+			// TODO this needs to be check, reworked and corrected, add dynasty feature !!!
+			let mogwai_1 = Self::mogwai(mogwai_id_1);
+			if mogwai_1.gen == 0 {
+				Self::pay_fee(sender.clone(), Pricing::fee_price(FeeType::Remove).saturated_into())?;
+				Self::remove(sender, mogwai_id_1)?;
+			} else {
+				let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
+				let intrinsic = mogwai_bios_1.intrinsic;
+				Self::remove(sender.clone(), mogwai_id_1)?;
+				let _ = T::Currency::deposit_into_existing(&sender, intrinsic)?;
+			}
 
             Ok(())
 		}
@@ -735,6 +743,14 @@ decl_module! {
 
 impl<T: Config> Module<T> {
 
+	/// Create technical accounts, currently not needed
+	/// This actually does computation. If you need to keep using it, then make sure you cache the
+	/// value and only call this once.
+	pub fn account_id(mogwai_id: T::Hash) -> T::AccountId {
+		T::ModuleId::get().into_sub_account(mogwai_id)
+	}
+
+
 	/// Reads the nonce from storage, increments the stored nonce, and returns
 	/// the encoded nonce to the caller.
 	fn encode_and_update_nonce() -> Vec<u8> {
@@ -743,15 +759,23 @@ impl<T: Config> Module<T> {
 		nonce.encode()
 	}
 
-	/// tiping mogwai
-	fn tip_mogwai(who: T::AccountId, amount: BalanceOf<T>, mogwai_id: T::Hash, mut mogwai_bios:  MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> ) -> dispatch::DispatchResult {
-		
+	/// pay fee
+	fn pay_fee(who: T::AccountId, amount: BalanceOf<T>) -> dispatch::DispatchResult {
+
 		let _ =  T::Currency::withdraw(
 			&who,
 			amount,
-			WithdrawReasons::TIP, 
+			WithdrawReasons::FEE, 
 			ExistenceRequirement::KeepAlive
 		)?;
+
+		Ok(())
+	}
+
+	/// tiping mogwai
+	fn tip_mogwai(who: T::AccountId, amount: BalanceOf<T>, mogwai_id: T::Hash, mut mogwai_bios:  MogwaiBios<T::Hash, T::BlockNumber, BalanceOf<T>> ) -> dispatch::DispatchResult {
+		
+		Self::pay_fee(who, amount)?;
 	  
 		mogwai_bios.intrinsic += amount; // TODO check overflow
 		<MogwaisBios<T>>::insert(mogwai_id, mogwai_bios);

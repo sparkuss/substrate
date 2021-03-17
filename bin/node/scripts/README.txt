@@ -1,0 +1,1 @@
+.\target\release\substrate build-spec --disable-default-bootnode --chain=bin/node/scripts/chain-spec/dotmog_livenet.json --raw > bin/node/scripts/chain-spec/dotmog_livenet_raw.json

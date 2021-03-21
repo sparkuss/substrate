@@ -25,7 +25,7 @@ use node_runtime::{
 	AuthorityDiscoveryConfig, BabeConfig, BalancesConfig, ContractsConfig, CouncilConfig,
 	DemocracyConfig,GrandpaConfig, ImOnlineConfig, SessionConfig, SessionKeys, StakerStatus,
 	StakingConfig, ElectionsConfig, IndicesConfig, SocietyConfig, SudoConfig, SystemConfig,
-	TechnicalCommitteeConfig, DotMogModuleConfig, wasm_binary_unwrap, 
+	TechnicalCommitteeConfig, DotMogModuleConfig, DotMogBaseConfig, wasm_binary_unwrap, 
 };
 use node_runtime::Block;
 use node_runtime::constants::currency::*;
@@ -327,6 +327,9 @@ pub fn testnet_genesis(
 		}),
 		pallet_vesting: Some(Default::default()),
 		pallet_dotmog: Some(DotMogModuleConfig {
+			key: root_key.clone(),
+		}),
+		pallet_dotmogbase: Some(DotMogBaseConfig {
 			key: root_key,
 		}),
 	}

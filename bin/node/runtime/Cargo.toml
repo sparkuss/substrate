@@ -84,6 +84,8 @@ pallet-transaction-payment-rpc-runtime-api = { version = "3.0.0", default-featur
 pallet-vesting = { version = "3.0.0", default-features = false, path = "../../../frame/vesting" }
 pallet-dotmog = { version = "3.0.0", default-features = false, path = "../pallets/dotmog", package = "pallet-dotmog" }
 
+pallet-dotmogbase = { version = "2.0.0", default-features = false, path = "../pallets/dotmogbase", package = "pallet-dotmogbase" }
+
 [build-dependencies]
 substrate-wasm-builder = { version = "4.0.0", path = "../../../utils/wasm-builder" }
 
@@ -153,6 +155,7 @@ std = [
 	"pallet-recovery/std",
 	"pallet-vesting/std",
 	"pallet-dotmog/std",
+	"pallet-dotmogbase/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking",

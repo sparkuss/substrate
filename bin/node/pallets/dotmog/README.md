@@ -50,5 +50,27 @@ Current Types needed:
     "level": "u8",
     "phases": "Vec<BlockNumber>",
     "adaptations": "Vec<Hash>"
+  },
+  "MogwaicoinAddress": {
+    "address": "Vec<u8>",
+    "account": "AccountId",
+    "signature": "Vec<u8>",
+    "state": "ClaimState",
+    "balance": "Balance"
+  },
+  "ClaimState": {
+    "_enum": [
+      "None",
+      "Registred",
+      "Verified",
+      "Secured",
+      "Processed",
+      "Holded",
+      "Failed",
+      "Cancelled"
+    ]
   }
 }
+
+
+

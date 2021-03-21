@@ -427,7 +427,7 @@ decl_module! {
 
             let sender = ensure_signed(origin)?;
 
-			ensure!(sender == Self::key(), "only the dot mog founder can remove mogwais.");
+			ensure!(sender == Self::key(), "only the dot mog founder can remove mogwais, without sacrificing them.");
 
 			let owner = Self::owner_of(mogwai_id).ok_or("No owner for this mogwai")?;
 			
@@ -749,7 +749,6 @@ impl<T: Config> Module<T> {
 	pub fn account_id(mogwai_id: T::Hash) -> T::AccountId {
 		T::ModuleId::get().into_sub_account(mogwai_id)
 	}
-
 
 	/// Reads the nonce from storage, increments the stored nonce, and returns
 	/// the encoded nonce to the caller.

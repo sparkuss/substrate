@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ### CONFIGURATION ###
-NODE_NAME="NODE01" # no spaces!
-TESTNET="dotmog_testnet_raw.json"
+NODE_NAME="your-node-name" # no spaces!
+TESTNET="dotmog_livenet_raw.json"
 
 REPO_DIR="/home/$USER/substrate"
 VALIDATOR_DIR="$REPO_DIR/tmp/validator-chain"

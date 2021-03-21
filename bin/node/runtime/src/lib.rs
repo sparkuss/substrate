@@ -85,6 +85,8 @@ pub use pallet_staking::StakerStatus;
 /// Import the DOT Mog pallet.
 pub use pallet_dotmog;
 
+pub use pallet_dotmogbase;
+
 /// Implementations of some helper traits passed into runtime modules as associated types.
 pub mod impls;
 use impls::Author;
@@ -115,7 +117,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	// and set impl_version to 0. If only runtime
 	// implementation changes and behavior does not, then leave spec_version as
 	// is and increment impl_version.
-	spec_version: 3,
+	spec_version: 4,
 	impl_version: 0,
 	apis: RUNTIME_API_VERSIONS,
 	transaction_version: 2,
@@ -1020,6 +1022,12 @@ impl pallet_dotmog::Config for Runtime {
 	type PricePayment = ();
 }
 
+/// Configure the pallet template in pallets/template.
+impl pallet_dotmogbase::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+}
+
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -1087,6 +1095,9 @@ construct_runtime!(
 		// Dot Mog Pallet, mandatory for a DOTMog universe chain.
 		DotMogModule: pallet_dotmog::{Module, Call, Storage, Event<T>, Config<T>},
 		
+		// Dot Mog Base Pallet, maintaining not directly game related informations.
+		DotMogBase: pallet_dotmogbase::{Module, Call, Storage, Event<T>, Config<T>},
+
 		// Additional pallets ... 
 		Contracts: pallet_contracts::{Module, Call, Config<T>, Storage, Event<T>},
 		Society: pallet_society::{Module, Call, Storage, Event<T>, Config<T>},

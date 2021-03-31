@@ -67,6 +67,22 @@ impl Pricing {
 
         price
     }
+    pub fn intrinsic_return(phase_length: usize) -> Balance {
+        let price:Balance;
+        if phase_length == 0 {
+            price = 10;
+        } else if phase_length == 1 {
+            price = 4;
+        } else if phase_length == 2 {
+            price = 2;
+        } else if phase_length == 3 {
+            price = 1;
+        } else {
+            price = 10;
+        }
+        
+        price
+    }
     pub fn pairing(rarity1: RarityType, rarity2: RarityType) -> Balance {
         let price:Balance;
         match rarity1 as u32 + rarity2 as u32 {

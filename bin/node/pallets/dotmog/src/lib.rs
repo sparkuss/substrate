@@ -473,8 +473,9 @@ decl_module! {
 				Self::pay_fee(sender.clone(), Pricing::fee_price(FeeType::Remove).saturated_into())?;
 				Self::remove(sender, mogwai_id_1)?;
 			} else {
+				ensure!(MogwaisBios::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiHasNoBios);
 				let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
-				let intrinsic = mogwai_bios_1.intrinsic;
+				let intrinsic = mogwai_bios_1.intrinsic / Pricing::intrinsic_return(mogwai_bios_1.phases.len()).saturated_into();
 				Self::remove(sender.clone(), mogwai_id_1)?;
 				let _ = T::Currency::deposit_into_existing(&sender, intrinsic)?;
 			}
@@ -1040,7 +1041,11 @@ impl<T: Config> Module<T> {
 			// and should be cleared in any function that removes them, like sacrifice and remove.
 			// TODO remove empty entries to avoid storage getting to big.
 			for hash in &game_event.hashes {
-				<GameEventsOfMogwai<T>>::mutate(hash, |mogwai_game_events| mogwai_game_events.retain(|&x| x != game_event.id));
+				<GameEventsOfMogwai<T>>::mutate(&hash, |mogwai_game_events| mogwai_game_events.retain(|&x| x != game_event.id));
+				let open_game_events = Self::game_events_of_mogwai(&hash);
+				if open_game_events.is_empty() {
+					<GameEventsOfMogwai<T>>::remove(hash);
+				}
 			}
 
 			let all_events_count = Self::all_game_events_count();

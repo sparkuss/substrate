@@ -38,6 +38,22 @@ pub mod pallet {
 	
 	impl Default for ClaimState { fn default() -> Self { Self::None } }
 
+	impl ClaimState { 
+		pub fn from_u32(value: u32) -> ClaimState {
+			match value {
+				0 => ClaimState::None,
+				1 => ClaimState::Registred,
+				2 => ClaimState::Verified,
+				3 => ClaimState::Secured,
+				4 => ClaimState::Processed,
+				5 => ClaimState::Holded,
+				6 => ClaimState::Failed,
+				7 => ClaimState::Cancelled,
+				_ => ClaimState::None,
+			}
+		}
+	}
+
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -114,6 +130,10 @@ pub mod pallet {
 		/// Event documentation should end with an array that provides descriptive names for event
 		/// parameters. [something, who]
 		SomethingStored(u32, T::AccountId),
+
+		/// Key for claim registrations changed
+		/// parameters. [who] 
+		KeyChanged(T::AccountId),
 	}
 	
 	// Errors inform users that something went wrong.
@@ -125,6 +145,8 @@ pub mod pallet {
 		StorageOverflow,
 		/// Account is already claimed.
 		AccountClaimAlreadyExists,
+		/// Account doesn't exists.
+		AccountClaimDoesntExists,
 		/// Incorrect signature size.
 		SignatureSize,
 		/// Incorrect address size.
@@ -158,6 +180,22 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn change_key(origin: OriginFor<T>, to: T::AccountId) -> DispatchResultWithPostInfo {
+
+			let sender = ensure_signed(origin)?;
+
+			ensure!(sender == Self::key(), "only the dot mog founder can change key.");
+		
+			<Key<T>>::put(&to);
+
+			// Emit an event.
+			Self::deposit_event(Event::KeyChanged(to));
+
+			// Return a successful DispatchResultWithPostInfo
+			Ok(().into())
+		}
+
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn claim(origin: OriginFor<T>,  address: Vec<u8>, account: T::AccountId, signature: Vec<u8>) -> DispatchResultWithPostInfo {
 
             let sender = ensure_signed(origin)?;
@@ -183,6 +221,26 @@ pub mod pallet {
 
 			// Return a successful DispatchResultWithPostInfo
 			Ok(Pays::No.into())
+		}
+
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn update_claim(origin: OriginFor<T>, address: Vec<u8>, account: T::AccountId, state: u32, balance: BalanceOf<T>) -> DispatchResultWithPostInfo {
+
+            let sender = ensure_signed(origin)?;
+
+			ensure!(sender == Self::key(), "only the dot mog founder can add claims.");
+
+			ensure!(AccountClaim::<T>::contains_key((account.clone(), address.clone())), Error::<T>::AccountClaimDoesntExists);
+
+			let mut mogwaicoin_address = Self::account_claim((&account, &address));
+
+			mogwaicoin_address.state = ClaimState::from_u32(state);
+			mogwaicoin_address.balance = balance;
+
+			<AccountClaim<T>>::insert((account, address), mogwaicoin_address);
+
+			// Return a successful DispatchResultWithPostInfo
+			Ok(().into())
 		}
 
 		/// An example dispatchable that may throw a custom error.

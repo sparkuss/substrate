@@ -1,11 +1,11 @@
 [package]
-authors = ['Anonymous']
-edition = '2018'
-name = 'pallet-dotmogbase'
-version = "2.0.0"
-license = "Unlicense"
-homepage = "https://substrate.dev"
-repository = "https://github.com/paritytech/substrate/"
+name = "pallet-dotmogbase"
+version = "3.0.0"
+authors = ["DOT Mog Team <adming@dotmog.com>"]
+edition = "2018"
+license = "AGPL3.0"
+homepage = "https://www.dotmog.com"
+repository = "https://github.com/dotmog/substrate/"
 description = "FRAME pallet dmog for defining custom runtime logic."
 readme = "README.md"
 

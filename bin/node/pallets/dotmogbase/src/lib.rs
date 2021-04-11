@@ -243,6 +243,21 @@ pub mod pallet {
 			Ok(().into())
 		}
 
+		#[pallet::weight(10_000 + T::DbWeight::get().reads(1) + T::DbWeight::get().writes(1))]
+		pub fn remove_claim(origin: OriginFor<T>, address: Vec<u8>, account: T::AccountId) -> DispatchResultWithPostInfo {
+
+            let sender = ensure_signed(origin)?;
+
+			ensure!(sender == Self::key(), "only the dot mog founder can remove claims.");
+
+			ensure!(AccountClaim::<T>::contains_key((account.clone(), address.clone())), Error::<T>::AccountClaimDoesntExists);
+
+			<AccountClaim<T>>::remove((account, address));
+
+			// Return a successful DispatchResultWithPostInfo
+			Ok(().into())
+		}
+
 		/// An example dispatchable that may throw a custom error.
 		#[pallet::weight(0)]
 		pub fn cause_error(origin: OriginFor<T>) -> DispatchResultWithPostInfo {

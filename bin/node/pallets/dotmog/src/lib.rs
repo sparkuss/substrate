@@ -483,6 +483,54 @@ decl_module! {
             Ok(())
 		}
 
+		/// Sacrifice mogwai to an other mogwai.
+		#[weight = 10_000 + T::DbWeight::get().writes(1)]
+		fn sacrifice_into(origin, mogwai_id_1: T::Hash, mogwai_id_2: T::Hash) -> dispatch::DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+
+			let owner1 = Self::owner_of(mogwai_id_1).ok_or(Error::<T>::MogwaiDoesntExists)?;
+			let owner2 = Self::owner_of(mogwai_id_2).ok_or(Error::<T>::MogwaiDoesntExists)?;
+			ensure!(owner1 == owner2, Error::<T>::MogwaiNotOwned);
+			ensure!(owner1 == sender, Error::<T>::MogwaiNotOwned);
+
+			// make sure that there is no pending game event on the mogwai before sacrificing it.
+			if GameEventsOfMogwai::<T>::contains_key(&mogwai_id_1) {
+				let open_game_events = Self::game_events_of_mogwai(&mogwai_id_1);
+				ensure!(open_game_events.is_empty(), Error::<T>::MogwaiHasGameEvents);
+			}
+
+			if GameEventsOfMogwai::<T>::contains_key(&mogwai_id_2) {
+				let open_game_events = Self::game_events_of_mogwai(&mogwai_id_2);
+				ensure!(open_game_events.is_empty(), Error::<T>::MogwaiHasGameEvents);
+			}
+
+			// TODO this needs to be check, reworked and corrected, add dynasty feature !!!
+			let mogwai_1 = Self::mogwai(mogwai_id_1);
+			let mut mogwai_2 = Self::mogwai(mogwai_id_2);
+
+			ensure!(MogwaisBios::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiHasNoBios);
+			ensure!(MogwaisBios::<T>::contains_key(mogwai_id_2), Error::<T>::MogwaiHasNoBios);
+
+			let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
+			let mut mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
+
+			let new_gen = Breeding::sacrifice(mogwai_1.gen, mogwai_1.rarity, mogwai_bios_1.metaxy.clone(), mogwai_2.gen, mogwai_2.rarity, mogwai_bios_2.metaxy.clone());
+			if new_gen > mogwai_2.gen {
+				mogwai_2.gen = new_gen;
+				<Mogwais<T>>::insert(mogwai_id_2, mogwai_2);
+			}
+
+			if mogwai_bios_1.intrinsic > Zero::zero() {
+				mogwai_bios_2.intrinsic += mogwai_bios_1.intrinsic; // TODO check overflow
+				<MogwaisBios<T>>::insert(mogwai_id_2, mogwai_bios_2);
+			}
+
+			Self::remove(sender.clone(), mogwai_id_1)?;
+
+            Ok(())
+		}
+
 		/// Buy a mogwai.
 		#[weight = 10_000 + T::DbWeight::get().writes(1)]
 		fn buy_mogwai(origin, mogwai_id: T::Hash, max_price: BalanceOf<T>) -> dispatch::DispatchResult {

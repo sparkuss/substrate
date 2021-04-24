@@ -12,6 +12,7 @@
 
 use frame_support::{codec::{Encode, Decode}};
 use node_primitives::Balance;
+use sp_std::vec::{Vec};
 
 #[derive(Encode, Decode, Clone, PartialEq)]
 pub enum BreedType {
@@ -105,6 +106,12 @@ impl Pricing {
 pub struct Breeding;
 
 impl Breeding {
+
+    pub fn sacrifice(gen1: u32, rarity1: RarityType, metaxy1: Vec<[u8;16]>, gen2: u32, rarity2: RarityType, metaxy2: Vec<[u8;16]>) -> u32 {
+        let gen:u32 = 0;
+
+        gen
+    }
 
 	pub fn pairing(breed_type: BreedType, gen1: [u8;16], gen2: [u8;16]) -> [u8;32] {
 

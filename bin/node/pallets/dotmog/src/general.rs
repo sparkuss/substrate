@@ -119,10 +119,59 @@ pub struct Breeding;
 
 impl Breeding {
 
-    pub fn sacrifice(gen1: u32, rarity1: RarityType, metaxy1: Vec<[u8;16]>, gen2: u32, rarity2: RarityType, metaxy2: Vec<[u8;16]>) -> u32 {
-        let gen:u32 = 0;
+    pub fn sacrifice(gen1: u32, rar1: u32, metaxy1: Vec<[u8;16]>, gen2: u32, rar2: u32, metaxy2: Vec<[u8;16]>) -> u32 {
+        
+        let mut result_gen:u32 = 0;
 
-        gen
+        let mut gen_diff:u32 = 0;
+        if gen1 > gen2 {
+            gen_diff = gen1 - gen2;
+        }
+
+        let mut rarity_diff:u32 = 0;
+        if rar2 > rar1 {
+            rarity_diff = rar2 - rar1;
+        }
+
+        if rarity_diff == 0 || gen_diff == 0 {
+
+            result_gen = gen_diff;
+
+        } else {
+
+            let mut max_gen:u32 = ((gen_diff * 2) / ((rarity_diff + 1) * rar2)) + 1;
+            if (gen2 + max_gen) > 16 {
+                max_gen = 16 - gen2;
+            }
+
+            let prob_aug:u32 = 10;
+            let prob_rar:u32 = rarity_diff * 4;
+            let prob_gen:u32 = gen_diff * 20;
+
+            let mut prob:u32 = (256 / (rar2 + prob_rar)) + prob_aug;
+
+            if prob_gen > prob_rar * 2 {
+                prob += prob_gen - (prob_rar * 2);
+            }
+            
+            let mut final_prob:u8 = 255;
+            if prob < 256 {
+                final_prob = prob as u8;
+            }
+
+            let gen_add = gen1 + gen2;
+            let pos1:u8 = metaxy1[0][((gen_add + rar2) % 16) as usize];
+            let pos2:u8 = metaxy2[0][((gen_add + rar1) % 16) as usize];
+
+            let val1:u8 = metaxy1[0][(pos2 % 16) as usize];
+            let val2:u8 = metaxy2[0][(pos1 % 16) as usize];
+        
+            if val1 < final_prob && val2 < final_prob {
+                result_gen = (val1 as u32 + val2 as u32) % max_gen + 1;  
+            } 
+        }
+
+        result_gen
     }
 
 	pub fn pairing(breed_type: BreedType, gen1: [u8;16], gen2: [u8;16]) -> [u8;32] {

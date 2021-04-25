@@ -515,9 +515,9 @@ decl_module! {
 			let mogwai_bios_1 = Self::mogwai_bios(mogwai_id_1);
 			let mut mogwai_bios_2 = Self::mogwai_bios(mogwai_id_2);
 
-			let new_gen = Breeding::sacrifice(mogwai_1.gen, mogwai_1.rarity, mogwai_bios_1.metaxy.clone(), mogwai_2.gen, mogwai_2.rarity, mogwai_bios_2.metaxy.clone());
-			if new_gen > mogwai_2.gen {
-				mogwai_2.gen = new_gen;
+			let gen_jump = Breeding::sacrifice(mogwai_1.gen, mogwai_1.rarity as u32, mogwai_bios_1.metaxy.clone(), mogwai_2.gen, mogwai_2.rarity as u32, mogwai_bios_2.metaxy.clone());
+			if gen_jump > 0 && (mogwai_2.gen + gen_jump) <= 16 {
+				mogwai_2.gen += gen_jump;
 				<Mogwais<T>>::insert(mogwai_id_2, mogwai_2);
 			}
 

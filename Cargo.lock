@@ -4660,6 +4660,7 @@ dependencies = [
 name = "pallet-dotmog"
 version = "3.0.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "node-primitives",

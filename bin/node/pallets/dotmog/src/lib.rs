@@ -12,6 +12,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 use frame_support::{
 	decl_module, decl_error, decl_event, decl_storage, ensure, codec::{Encode, Decode}, dispatch, 
 	traits::{
@@ -276,6 +279,9 @@ decl_error! {
 		/// The submitted index is out of range.
 		ConfigIndexOutOfRange,
 
+		/// Invalid or unimplemented config update.
+		ConfigUpdateInvalid,
+
 		/// Incompatible generation
 		MogwaiIncompatibleGeneration,
 
@@ -344,7 +350,7 @@ decl_module! {
 
 			let sender = ensure_signed(origin)?;
 
-			ensure!(index < 8, Error::<T>::ConfigIndexOutOfRange);
+			ensure!(index < GameConfig::PARAM_COUNT, Error::<T>::ConfigIndexOutOfRange);
 
 			let config_opt = <AccountConfig<T>>::get(&sender);
 						
@@ -354,14 +360,24 @@ decl_module! {
 			}
 
 			// TODO: add rules (min, max) for different configurations
+			let update_value:u8 = GameConfig::verify_update(index, game_config.parameters[usize::from(index)], value_opt);
 
-			if value_opt.is_some() {
-				game_config.parameters[usize::from(index)] = value_opt.unwrap();
-			} else {
-				let config_value = game_config.parameters[usize::from(index)].checked_add(1)
-					.ok_or("Overflow adding a one to index")?;
-					game_config.parameters[usize::from(index)] = config_value;
+			ensure!(update_value > 0, Error::<T>::ConfigUpdateInvalid);
+
+			let price = Pricing::config_update_price(index, update_value);
+			if price > 0 {
+				Self::pay_founder(sender.clone(), price.saturated_into())?;
 			}
+			
+			//if value_opt.is_some() {
+			//	game_config.parameters[usize::from(index)] = value_opt.unwrap();
+			//} else {
+			//	let config_value = game_config.parameters[usize::from(index)].checked_add(1)
+			//		.ok_or("Overflow adding a one to index")?;
+			//		game_config.parameters[usize::from(index)] = config_value;
+			//}
+
+			game_config.parameters[usize::from(index)] = update_value;
 
 			// updating to the new configuration
 			<AccountConfig<T>>::insert(&sender, &game_config.parameters);
@@ -509,6 +525,8 @@ decl_module! {
 			let mogwai_1 = Self::mogwai(mogwai_id_1);
 			let mut mogwai_2 = Self::mogwai(mogwai_id_2);
 
+			ensure!((mogwai_1.rarity as u8 * mogwai_2.rarity as u8) > 0, "Sacrifice into is only available for normal and higher rarity!");
+
 			ensure!(MogwaisBios::<T>::contains_key(mogwai_id_1), Error::<T>::MogwaiHasNoBios);
 			ensure!(MogwaisBios::<T>::contains_key(mogwai_id_2), Error::<T>::MogwaiHasNoBios);
 
@@ -550,7 +568,7 @@ decl_module! {
 		
 			ensure!(mogwai_price <= max_price, "You can't buy this mogwai, price exceeds your max price limit");
 
-			T::Currency::transfer(&sender, &owner, mogwai_price, ExistenceRequirement::AllowDeath)?;
+			T::Currency::transfer(&sender, &owner, mogwai_price, ExistenceRequirement::KeepAlive)?;
 
 			// Transfer the mogwai using `transfer_from()` including a proof of why it cannot fail
 			Self::transfer_from(owner.clone(), sender.clone(), mogwai_id)
@@ -814,7 +832,21 @@ impl<T: Config> Module<T> {
 			&who,
 			amount,
 			WithdrawReasons::FEE, 
-			ExistenceRequirement::KeepAlive
+			ExistenceRequirement::KeepAlive,
+		)?;
+
+		Ok(())
+	}
+
+	/// pay founder
+	fn pay_founder(who: T::AccountId, amount: BalanceOf<T>) -> dispatch::DispatchResult {
+
+		let founder: T::AccountId = Self::key();
+		let _ =  T::Currency::transfer(
+			&who,
+			&founder,
+			amount,
+			ExistenceRequirement::KeepAlive,
 		)?;
 
 		Ok(())

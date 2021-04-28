@@ -31,7 +31,7 @@ pub struct GameConfig{
 
 impl GameConfig {
 	
-	const PARAM_COUNT: u8 = 8;
+	pub const PARAM_COUNT: u8 = 8;
 
 	pub fn new() -> Self {
 		let mut v = Vec::new();
@@ -41,5 +41,32 @@ impl GameConfig {
 		return GameConfig {
 			parameters: v,
 		};
+	}
+
+	pub fn verify_update(index: u8, value: u8, update_value_opt: Option<u8>) -> u8 {
+
+		let mut result:u8;
+
+		match index {
+
+			// MaxMogwaisInAccount
+            1 => {
+				match value {
+					0 => result = 1,
+					1 => result = 2,
+					2 => result = 3,
+					_ => result = 0,
+				}
+			},
+
+            _ => result = 0,
+		}
+
+		// don't allow bad requests
+		if update_value_opt.is_some() && result != update_value_opt.unwrap() {
+			result = 0;
+		}
+
+		result
 	}
 }

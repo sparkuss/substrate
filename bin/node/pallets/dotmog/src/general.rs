@@ -59,16 +59,23 @@ impl Default for FeeType { fn default() -> Self { Self::Default }}
 
 pub struct Pricing;
 impl Pricing {
-    pub fn mogwai_stash(extension: u32) -> Balance {
+    pub fn config_update_price(index: u8, value: u8) -> Balance {
         let price:Balance;
-
-        match extension {
-            0 => price =    0 * DMOGS,
-            1 => price =   10 * DMOGS,
-            2 => price =   50 * DMOGS,
-            _ => price =    1 * DMOGS,
+        match index {
+			// Config max. Mogwais in account
+            1 => price = Self::config_max_mogwais(value),
+            _ => price = 0,
+		}
+        price
+    }
+    fn config_max_mogwais(value: u8) -> Balance {
+        let price:Balance;
+        match value {
+            1 => price =    5 * DMOGS,
+            2 => price =   10 * DMOGS,
+            3 => price =   20 * DMOGS,
+            _ => price =    0 * DMOGS,
         }
-
         price
     }
     pub fn fee_price(fee: FeeType) -> Balance {

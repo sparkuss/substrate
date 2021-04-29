@@ -30,7 +30,7 @@ pub struct GameConfig{
 }
 
 impl GameConfig {
-	
+
 	pub const PARAM_COUNT: u8 = 8;
 
 	pub fn new() -> Self {
@@ -42,13 +42,26 @@ impl GameConfig {
 			parameters: v,
 		};
 	}
-
-	pub fn verify_update(index: u8, value: u8, update_value_opt: Option<u8>) -> u8 {
-
-		let mut result:u8;
-
+	pub fn config_value(index: u8, value: u8) -> u32 {
+		let result:u32;
 		match index {
-
+			// MaxMogwaisInAccount
+            1 => {
+				match value {
+					0 => result = 6,
+					1 => result = 12,
+					2 => result = 18,
+					3 => result = 24,
+					_ => result = 0,
+				}
+			},
+            _ => result = 0,
+		}
+		result
+	}
+	pub fn verify_update(index: u8, value: u8, update_value_opt: Option<u8>) -> u8 {
+		let mut result:u8;
+		match index {
 			// MaxMogwaisInAccount
             1 => {
 				match value {
@@ -58,15 +71,12 @@ impl GameConfig {
 					_ => result = 0,
 				}
 			},
-
             _ => result = 0,
 		}
-
 		// don't allow bad requests
 		if update_value_opt.is_some() && result != update_value_opt.unwrap() {
 			result = 0;
 		}
-
 		result
 	}
 }

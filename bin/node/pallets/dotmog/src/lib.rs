@@ -276,6 +276,12 @@ decl_error! {
 		/// The mogwai isn't owned by the sender.
 		MogwaiNotOwned,
 
+		/// Same mogwai choosen for extrinsic.
+		MogwaiSame,
+
+		/// Maximum Mogwais in account reached.
+		MaxMogwaisInAccount,
+
 		/// The submitted index is out of range.
 		ConfigIndexOutOfRange,
 
@@ -353,7 +359,6 @@ decl_module! {
 			ensure!(index < GameConfig::PARAM_COUNT, Error::<T>::ConfigIndexOutOfRange);
 
 			let config_opt = <AccountConfig<T>>::get(&sender);
-						
 			let mut game_config = GameConfig::new();
 			if config_opt.is_some() {
 				game_config.parameters = config_opt.unwrap();
@@ -417,6 +422,9 @@ decl_module! {
 			
 			let sender = ensure_signed(origin)?;
 
+			// ensure that we have enough space
+			ensure!(Self::ensure_not_max_mogwais(sender.clone()), Error::<T>::MaxMogwaisInAccount);
+
 			//let data_hash = T::Hashing::hash(random_bytes.as_bytes());
 			let block_number = <frame_system::Module<T>>::block_number();
 			//let block_hash = <frame_system::Module<T>>::block_hash(block_number);
@@ -460,8 +468,13 @@ decl_module! {
 
             let sender = ensure_signed(origin)?;
 
+			ensure!(sender == Self::key(), "only the dot mog founder can transfer mogwais, without paying for them.");
+
 			let owner = Self::owner_of(mogwai_id).ok_or(Error::<T>::MogwaiDoesntExists)?;
 			ensure!(owner == sender, Error::<T>::MogwaiNotOwned);
+
+			// ensure that we have enough space
+			ensure!(Self::ensure_not_max_mogwais(to.clone()), Error::<T>::MaxMogwaisInAccount);
 
             Self::transfer_from(sender, to, mogwai_id)?;
 
@@ -509,6 +522,9 @@ decl_module! {
 			let owner2 = Self::owner_of(mogwai_id_2).ok_or(Error::<T>::MogwaiDoesntExists)?;
 			ensure!(owner1 == owner2, Error::<T>::MogwaiNotOwned);
 			ensure!(owner1 == sender, Error::<T>::MogwaiNotOwned);
+
+			// asacrificing into the same mogwai isn't allowed
+			ensure!(mogwai_id_1 != mogwai_id_2, Error::<T>::MogwaiSame);
 
 			// make sure that there is no pending game event on the mogwai before sacrificing it.
 			if GameEventsOfMogwai::<T>::contains_key(&mogwai_id_1) {
@@ -559,7 +575,7 @@ decl_module! {
 
 			let owner = Self::owner_of(mogwai_id).ok_or(Error::<T>::MogwaiDoesntExists)?;
 			ensure!(owner != sender, "You already own this mogwai");
-		
+			
 			let mut mogwai = Self::mogwai(mogwai_id);
 		
 			let mogwai_price = mogwai.price;
@@ -567,6 +583,9 @@ decl_module! {
 			ensure!(!mogwai_price.is_zero(), "You can't buy this mogwai, there is no price");
 		
 			ensure!(mogwai_price <= max_price, "You can't buy this mogwai, price exceeds your max price limit");
+
+			// ensure that we have enough space
+			ensure!(Self::ensure_not_max_mogwais(sender.clone()), Error::<T>::MaxMogwaisInAccount);
 
 			T::Currency::transfer(&sender, &owner, mogwai_price, ExistenceRequirement::KeepAlive)?;
 
@@ -635,6 +654,12 @@ decl_module! {
 
 			let owner = Self::owner_of(mogwai_id_1).ok_or("No owner for this mogwai")?;	
 			ensure!(owner == sender, "You don't own the first mogwai");
+
+			// breeding into the same mogwai isn't allowed
+			ensure!(mogwai_id_1 != mogwai_id_2, Error::<T>::MogwaiSame);
+
+			// ensure that we have enough space
+			ensure!(Self::ensure_not_max_mogwais(sender.clone()), Error::<T>::MaxMogwaisInAccount);
 
 			let parents = [Self::mogwai(mogwai_id_1) , Self::mogwai(mogwai_id_2)];
 
@@ -861,6 +886,22 @@ impl<T: Config> Module<T> {
 		<MogwaisBios<T>>::insert(mogwai_id, mogwai_bios);
 
 		Ok(())
+	}
+
+	fn config_value(who: T::AccountId, index: u8) -> u32 {
+		let config_opt = <AccountConfig<T>>::get(&who);
+		let result:u32;
+		if config_opt.is_some() {
+			let value = config_opt.unwrap()[usize::from(index)];
+			result = GameConfig::config_value(index, value);
+		} else {
+			result = GameConfig::config_value(index, 0);
+		}
+		result
+	}
+
+	fn ensure_not_max_mogwais(who: T::AccountId) -> bool {
+		Self::owned_mogwais_count(&who) < Self::config_value(who.clone(), 1) as u64
 	}
 
 	fn mint(to: T::AccountId, mogwai_id: T::Hash, new_mogwai: MogwaiStruct<T::Hash, T::BlockNumber, BalanceOf<T>, RarityType>, game_event_opt: Option<GameEvent<T::Hash, T::BlockNumber, GameEventType>>) -> dispatch::DispatchResult {

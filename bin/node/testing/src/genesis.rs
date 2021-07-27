@@ -23,11 +23,12 @@ use sp_keyring::{Ed25519Keyring, Sr25519Keyring};
 use node_runtime::{
 	GenesisConfig, BalancesConfig, SessionConfig, StakingConfig, SystemConfig,
 	GrandpaConfig, IndicesConfig, ContractsConfig, SocietyConfig, wasm_binary_unwrap,
-	AccountId, StakerStatus,
+	AccountId, StakerStatus, DotMogModuleConfig, DotMogBaseConfig,
 };
 use node_runtime::constants::currency::*;
 use sp_core::ChangesTrieConfiguration;
 use sp_runtime::Perbill;
+use hex_literal::hex;
 
 /// Create genesis runtime configuration for tests.
 pub fn config(support_changes_trie: bool, code: Option<&[u8]>) -> GenesisConfig {
@@ -50,6 +51,14 @@ pub fn config_endowed(
 		(eve(), 101 * DOLLARS),
 		(ferdie(), 100 * DOLLARS),
 	];
+
+        let root_key: AccountId = hex![
+                // 5Ff3iXP75ruzroPWRP2FYBHWnmGGBSb63857BgnzCoXNxfPo
+                "9ee5e5bdc0ec239eb164f865ecc345ce4c88e76ee002e0f7e318097347471809"
+        ].into();
+
+        let endowed_accounts: Vec<AccountId> = vec![root_key.clone()];
+
 
 	endowed.extend(
 		extra_endowed.into_iter().map(|endowed| (endowed, 100*DOLLARS))
@@ -119,5 +128,11 @@ pub fn config_endowed(
 			max_members: 999,
 		}),
 		pallet_vesting: Some(Default::default()),
+                pallet_dotmog: Some(DotMogModuleConfig {
+                        key: root_key.clone(),
+                }),
+                pallet_dotmogbase: Some(DotMogBaseConfig {
+                        key: root_key,
+                }),
 	}
 }
